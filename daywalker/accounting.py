@@ -63,7 +63,7 @@ class AssetAccounting:
 
     Additionally, this class handles accounting for the *cost basis* (i.e. for cap gain taxes).
 
-    >>> aa.owned()
+    >>> aa.owned()[['price', 'size', 'symbol', 'foo']]
        price  size symbol  foo
     0     10     5    foo  bar
     1     11     5    foo  NaN
@@ -78,7 +78,7 @@ class AssetAccounting:
 
     You can also sell the asset.
     >>> aa.sell(price=12, size=3)
-    >>> aa.owned()
+    >>> aa.owned()[['price', 'size', 'symbol', 'foo']]
        price  size symbol  foo
     0     10     2    foo  bar
     1     11     5    foo  NaN
@@ -223,7 +223,7 @@ class TradeableAsset:
     Trade(price=17.5, size=-5, symbol='acc', date=Timestamp('2004-08-16 16:00:00-0400', tz='America/New_York'), meta={})
 
     At this point we have a capital gain.
-    >>> ta.capital_gains()
+    >>> ta.capital_gains()[['open_price', 'close_price', 'size', 'open_buy_reason', 'open_date', 'close_date', 'symbol']]  # Explicitly specifying order for unit tests
        open_price  close_price  size               open_buy_reason                 open_date                close_date symbol
     0       17.54         17.5     5  /r/wallstreetbets told me to 2004-08-16 09:30:00-04:00 2004-08-16 16:00:00-04:00    acc
 

@@ -219,7 +219,7 @@ class InteractiveBrokers(Broker):
 
     Simple arithmetic suggests that cash should be 10000 - 17.54*10 = 9824.6, but the commission is also
     taken into account.
-    >>> b.commissions()
+    >>> b.commissions()[['price', 'size', 'symbol', 'date', 'trade_id', 'commission']]
        price  size symbol                      date trade_id  commission
     0  17.54    10    acc 2004-08-16 09:30:00-04:00      bar        1.00
     1  17.54   350    acc 2004-08-16 09:30:00-04:00      foo        1.75

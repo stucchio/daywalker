@@ -11,11 +11,11 @@ __all__ = ['Strategy', 'Market']
 
 class Strategy(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def pre_open(self, dt):
+    def pre_open(self, dt, broker, trades, commissions):
         pass
 
     @abc.abstractmethod
-    def pre_close(self, dt):
+    def pre_close(self, dt, broker, trades, commissions):
         pass
 
 
@@ -56,7 +56,7 @@ class Market:
     >>> m.run()
 
     After running the simulation, we hold the following positions:
-    >>> m.broker.positions()
+    >>> m.broker.positions()[['price', 'size', 'symbol', 'trade_id', 'date']]
        price  size symbol trade_id                      date
     0  17.35     4    acc        0 2004-08-17 09:30:00-04:00
     1  17.25     5    acc        1 2004-08-18 09:30:00-04:00
@@ -65,7 +65,7 @@ class Market:
 
     Capital gains can similarly be found:
     >>> cg = m.broker.capital_gains()
-    >>> cg
+    >>> cg[['open_price', 'close_price', 'size', 'open_trade_id', 'open_date', 'close_trade_id', 'close_date', 'symbol']]
        open_price  close_price  size open_trade_id                 open_date close_trade_id                close_date symbol
     0       17.50        17.51     1             1 2004-08-12 09:30:00-04:00              0 2004-08-13 16:00:00-04:00    acc
     1       17.50        17.50     2             0 2004-08-13 09:30:00-04:00              1 2004-08-16 16:00:00-04:00    acc
@@ -73,7 +73,7 @@ class Market:
 
     As well as commissions that were paid.
     >>> commissions = m.broker.commissions()
-    >>> commissions
+    >>> commissions[['price', 'size', 'symbol', 'date', 'trade_id', 'commission']]
        price  size symbol                      date trade_id  commission
     0  17.50     1    acc 2004-08-12 09:30:00-04:00        1      0.1750
     1  17.50     2    acc 2004-08-13 09:30:00-04:00        0      0.3500
@@ -94,7 +94,7 @@ class Market:
     -0.5899999999999963
 
     >>> trades = m.broker.trades_df()
-    >>> trades
+    >>> trades[['price', 'size', 'symbol', 'date', 'trade_id']]
        price  size symbol                      date trade_id
     0  17.50     1    acc 2004-08-12 09:30:00-04:00        1
     1  17.50     2    acc 2004-08-13 09:30:00-04:00        0
