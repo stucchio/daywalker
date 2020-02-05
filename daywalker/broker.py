@@ -125,6 +125,9 @@ class Broker:
             self.__update_asset_owned(symbol)
         return t
 
+    def historical_prices(self, symbol, dt, after_open):
+        return self.__assets[symbol].get_censored(dt, after_open)
+
     def __limit_on_auction(self, symbol, dt, price, size, is_buy, meta={}, kind=None):
         if is_buy:
             signed_size = size
@@ -279,6 +282,10 @@ class BrokerInterface:
     def set_date(self, dt, after_open):
         self.__dt = dt
         self.__after_open = after_open
+        self.__positions = self.__broker.positions()
+
+    def positions(self):
+        return self.__positions
 
     def get_unreported_items(self):
         trades = self.__trades_to_report
@@ -304,6 +311,9 @@ class BrokerInterface:
             self.__broker.limit_on_close(symbol, self.__dt, price, size, is_buy, meta)
         else:
             raise InvalidOrderException("You can't submit a limit_on_close order until after the open.")
+
+    def historical_prices(self, symbol):
+        return self.__assets[symbol].get_censored(self.__dt, self.__after_open)
 
 
 if __name__=='__main__':
