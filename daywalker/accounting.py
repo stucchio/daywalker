@@ -1,9 +1,12 @@
 from collections import namedtuple
 import pandas as pd
 import numpy as np
-import uuid
 import datetime
 import pytz
+if __package__ is None or __package__ == '':
+    from _utils import DictableToDataframe
+else:
+    from ._utils import DictableToDataframe
 
 
 __all__ = ['CostBasis', 'CapitalGainOrLoss', 'AssetAccounting', 'TradeableAsset', 'Trade']
@@ -26,6 +29,16 @@ class CostBasis(namedtuple('CostBasis', ['price', 'size', 'symbol', 'meta'])):
 class CapitalGainOrLoss(namedtuple('CapitalGainOrLoss', ['open_price', 'close_price', 'size', 'symbol', 'open_meta', 'close_meta'])):
     def cap_gain(self):
         return (self.close_price - self.open_price) * self.size
+
+    def df_dict(self):
+        d = {'open_price': float(self.open_price), 'close_price': float(self.close_price),
+             'size': self.size, 'symbol': self.symbol }
+        for k in self.open_meta:
+            d['open_' + k] = self.open_meta[k]
+        for k in self.close_meta:
+            d['close_' + k] = self.close_meta[k]
+        return d
+
 
 class Trade(namedtuple('Trade', ['price', 'size', 'symbol', 'date', 'meta'])):
     def cash_cost(self):
@@ -73,7 +86,7 @@ class AssetAccounting:
     Since we have no capital gains at this point, none will be returned:
     >>> aa.capital_gains()
     Empty DataFrame
-    Columns: [symbol]
+    Columns: []
     Index: []
 
     You can also sell the asset.
@@ -86,7 +99,7 @@ class AssetAccounting:
     At this point there will be a capital gain.
     >>> aa.capital_gains()
        close_price open_foo  open_price  size symbol
-    0         12.0      bar        10.0   3.0    foo
+    0         12.0      bar        10.0     3    foo
 
     Note how the metadata column 'foo' has been prepended with 'open_foo', since the metadata
     applied to the open leg of the trade.
@@ -95,16 +108,15 @@ class AssetAccounting:
     >>> aa.sell(price=13, size=4)
     >>> aa.capital_gains()
        close_price open_foo  open_price  size symbol
-    0         12.0      bar        10.0   3.0    foo
-    0         13.0      bar        10.0   2.0    foo
-    1         13.0      NaN        11.0   2.0    foo
+    0         12.0      bar        10.0     3    foo
+    0         13.0      bar        10.0     2    foo
+    1         13.0      NaN        11.0     2    foo
     """
     def __init__(self, symbol):
-        self.__capital_gains_or_losses = []
         self.__owned = []
         self.__quantity = 0
         self.symbol = symbol
-        self.__capital_gain_df = None
+        self.__capital_gains_or_losses = DictableToDataframe()
 
     def buy(self, price, size, meta={}):
         self.__do_trade(price, size, meta=meta)
@@ -122,25 +134,7 @@ class AssetAccounting:
         return pd.DataFrame(result)#self.__owned.copy()
 
     def capital_gains(self):
-        result = []
-        for r in self.__capital_gains_or_losses:
-            d = {}
-            d['open_price'] = r.open_price
-            d['close_price'] = r.close_price
-            d['size'] = r.size
-            for k in r.open_meta:
-                d['open_' + k] = r.open_meta[k]
-            for k in r.close_meta:
-                d['close_' + k] = r.close_meta[k]
-            result.append(d)
-        df = pd.DataFrame(result)
-        df['symbol'] = self.symbol
-        if (self.__capital_gain_df is None):
-            self.__capital_gain_df = df
-        else:
-            self.__capital_gain_df = pd.concat([self.__capital_gain_df, df], sort=True)
-        self.__capital_gains_or_losses = []
-        return self.__capital_gain_df
+        return self.__capital_gains_or_losses.get()
 
     def __do_trade(self, price, size, meta={}):
         assert (size != 0)

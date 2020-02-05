@@ -12,7 +12,6 @@ import abc
 __all__ = ['Market']
 
 
-
 class _TestStrategy(Strategy):
     """This is used just for the doctests."""
     def __init__(self, symbol):

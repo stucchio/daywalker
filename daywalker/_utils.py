@@ -9,16 +9,15 @@ class DictableToDataframe:
         self.buffer.append(o)
 
     def get(self):
-        result = []
-        for o in self.buffer:
-            result.append(o.df_dict())
-        if len(result) == 0:
+        if len(self.buffer) == 0:  # Easy case
             return self.df_result
+
+        result = [o.df_dict() for o in self.buffer]
+        self.buffer = []
         if len(self.df_result) == 0:
             self.df_result = pd.DataFrame(result)
         else:
-            self.df_result = pd.concat(self.df_result, self.df_result)
-        self.buffer = []
+            self.df_result = pd.concat([self.df_result, pd.DataFrame(result)])
         return self.df_result
 
 class DataframeBuffer:
