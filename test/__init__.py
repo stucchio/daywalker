@@ -10,4 +10,5 @@ import daywalker.accounting as dw_accounting
 def load_tests(loader, tests, ignore):
     for module in [dw_market, dw_broker, dw_accounting]:
         tests.addTests(doctest.DocTestSuite(module))
+    tests.addTests(doctest.DocFileSuite("../readme.md"))
     return tests
