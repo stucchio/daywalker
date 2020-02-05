@@ -1,22 +1,16 @@
 if __package__ is None or __package__ == '':
     from accounting import *
     from broker import Broker, BrokerInterface, InteractiveBrokers
+    from strategy import Strategy
 else:
     from .accounting import *
     from .broker import Broker, BrokerInterface, InteractiveBrokers
+    from .strategy import Strategy
 import pandas as pd
 import abc
 
-__all__ = ['Strategy', 'Market']
+__all__ = ['Market']
 
-class Strategy(metaclass=abc.ABCMeta):
-    @abc.abstractmethod
-    def pre_open(self, dt, broker, trades, commissions):
-        pass
-
-    @abc.abstractmethod
-    def pre_close(self, dt, broker, trades, commissions):
-        pass
 
 
 class _TestStrategy(Strategy):
