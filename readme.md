@@ -95,7 +95,6 @@ We can also see the history up to (and including) 2004-08-16.
     2004-08-13,17.5,17.51,17.5,17.51,593000,0.0,1.0
     2004-08-16,17.54,17.54,17.5,17.5,684700,0.0,1.0
     <BLANKLINE>
-    >>>
 
 The next step in running a backtest is getting a `Broker`. I use Interactive Brokers.
 
@@ -140,13 +139,36 @@ And the following commissions were paid, as per the InteractiveBrokers schedule:
 
 ### Building a strategy
 
-A strategy is a very simple class. Lets build a strategy which attempts to buy a stock, at the open, whenever the price is less than 5% of the moving average over the past few days.
+A strategy is a very simple class. Lets build a strategy which attempts to buy a stock, at the open, whenever the price is less than 5% of the previous maximum. It will do this at a rate of 100 shares/day until it owns 1000 shares.
 
-    class Strategy(metaclass=abc.ABCMeta):
-        @abc.abstractmethod
+It will attempt to sell 100 whenever the price is greater than 5% of the previous max.
+
+    class MyStrategy(Strategy):
+        def __init__(self, symbol):
+            self.symbol = symbol
+
         def pre_open(self, dt, broker, trades, commissions):
-            pass
+            positions = broker.positions()
+            total_shares = positions['size'].sum()
+            price = broker.historical_prices(self.symbol)
+            prev_max = price['close'].max()
 
-        @abc.abstractmethod
+            if total_shares < 1000:
+                broker.limit_on_open(self.symbol, prev_max * 0.95, min(100, 1000 - total_shares), is_buy=True, meta={'prev_max': prev_max})
+            if total_shares > 0:
+                broker.limit_on_open(self.symbol, prev_max * 1.05, min(100, total_shares), is_buy=False, meta={'prev_max': prev_max})
+
         def pre_close(self, dt, broker, trades, commissions):
-            pass
+            positions = broker.positions()
+            total_shares = positions['size'].sum()
+            price = broker.historical_prices(self.symbol)
+            prev_max = price['close'].max()
+
+            if total_shares < 1000:
+                broker.limit_on_close(self.symbol, prev_max * 0.95, min(100, 1000 - total_shares), is_buy=True, meta={'prev_max': prev_max})
+            if total_shares > 0:
+                broker.limit_on_close(self.symbol, prev_max * 1.05, min(100, total_shares), is_buy=False, meta={'prev_max': prev_max})
+
+At the moment, only the opening/closing auction are supported. The reason is that these are what I use.
+
+Another interesting piece is the `meta={...}` argument. This argument allows you to attach diagnostic information to each trade order. This diagnostic information carries over to capital gains as columns in the resulting dataframe.
