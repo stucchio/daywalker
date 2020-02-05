@@ -1,5 +1,20 @@
 import pandas as pd
 
+
+class HasDfDict:
+    META_FIELDS = []
+
+    def df_dict(self):
+        d = {}
+        for c in self.DICT_COLUMNS:
+            d[c] = getattr(self, c)
+        for (field, prefix) in self.META_FIELDS:
+            meta = getattr(self, field)
+            for k in meta:
+                d[prefix + k] = meta[k]
+        return d
+
+
 class DictableToDataframe:
     def __init__(self):
         self.buffer = []

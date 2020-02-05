@@ -4,55 +4,36 @@ import numpy as np
 import datetime
 import pytz
 if __package__ is None or __package__ == '':
-    from _utils import DictableToDataframe
+    from _utils import DictableToDataframe, HasDfDict
 else:
-    from ._utils import DictableToDataframe
+    from ._utils import DictableToDataframe, HasDfDict
 
 
 __all__ = ['CostBasis', 'CapitalGainOrLoss', 'AssetAccounting', 'TradeableAsset', 'Trade']
 
 
-class CostBasis(namedtuple('CostBasis', ['price', 'size', 'symbol', 'meta'])):
+class CostBasis(namedtuple('CostBasis', ['price', 'size', 'symbol', 'meta']), HasDfDict):
+    DICT_COLUMNS = ['price', 'size', 'symbol']
+    META_FIELDS = [('meta', '')]
+
     def cash_cost(self):
         return self.price * self.size
 
-    def df_dict(self):
-        d = {
-            'price': self.price,
-            'size': self.size,
-            'symbol': self.symbol,
-            }
-        d.update(self.meta)
-        return d
 
+class CapitalGainOrLoss(namedtuple('CapitalGainOrLoss', ['open_price', 'close_price', 'size', 'symbol', 'open_meta', 'close_meta']), HasDfDict):
+    DICT_COLUMNS = ['open_price', 'close_price', 'size', 'symbol']
+    META_FIELDS = [('open_meta', 'open_'), ('close_meta', 'close_')]
 
-class CapitalGainOrLoss(namedtuple('CapitalGainOrLoss', ['open_price', 'close_price', 'size', 'symbol', 'open_meta', 'close_meta'])):
     def cap_gain(self):
         return (self.close_price - self.open_price) * self.size
 
-    def df_dict(self):
-        d = {'open_price': float(self.open_price), 'close_price': float(self.close_price),
-             'size': self.size, 'symbol': self.symbol }
-        for k in self.open_meta:
-            d['open_' + k] = self.open_meta[k]
-        for k in self.close_meta:
-            d['close_' + k] = self.close_meta[k]
-        return d
 
+class Trade(namedtuple('Trade', ['price', 'size', 'symbol', 'date', 'meta']), HasDfDict):
+    DICT_COLUMNS = ['price', 'size', 'symbol', 'date']
+    META_FIELDS = [('meta', '')]
 
-class Trade(namedtuple('Trade', ['price', 'size', 'symbol', 'date', 'meta'])):
     def cash_cost(self):
         return self.price * self.size
-
-    def df_dict(self):
-        d = {
-            'price': self.price,
-            'size': self.size,
-            'symbol': self.symbol,
-            'date': self.date
-            }
-        d.update(self.meta)
-        return d
 
 
 class AssetAccounting:
@@ -70,7 +51,7 @@ class AssetAccounting:
 
     >>> aa.quantity()
     5
-    >>> aa.buy(11, 5)
+    >>> aa.buy(11.1, 5)
     >>> aa.quantity()
     10
 
@@ -78,8 +59,8 @@ class AssetAccounting:
 
     >>> aa.owned()[['price', 'size', 'symbol', 'foo']]
        price  size symbol  foo
-    0     10     5    foo  bar
-    1     11     5    foo  NaN
+    0   10.0     5    foo  bar
+    1   11.1     5    foo  NaN
 
     Cap gains are handled in a FIFO manner.
 
@@ -93,8 +74,8 @@ class AssetAccounting:
     >>> aa.sell(price=12, size=3)
     >>> aa.owned()[['price', 'size', 'symbol', 'foo']]
        price  size symbol  foo
-    0     10     2    foo  bar
-    1     11     5    foo  NaN
+    0   10.0     2    foo  bar
+    1   11.1     5    foo  NaN
 
     At this point there will be a capital gain.
     >>> aa.capital_gains()
@@ -105,12 +86,12 @@ class AssetAccounting:
     applied to the open leg of the trade.
 
     Capital gains are properly handled across tranches:
-    >>> aa.sell(price=13, size=4)
+    >>> aa.sell(price=13.0, size=4)
     >>> aa.capital_gains()
        close_price open_foo  open_price  size symbol
     0         12.0      bar        10.0     3    foo
     0         13.0      bar        10.0     2    foo
-    1         13.0      NaN        11.0     2    foo
+    1         13.0      NaN        11.1     2    foo
     """
     def __init__(self, symbol):
         self.__owned = []
@@ -119,10 +100,10 @@ class AssetAccounting:
         self.__capital_gains_or_losses = DictableToDataframe()
 
     def buy(self, price, size, meta={}):
-        self.__do_trade(price, size, meta=meta)
+        self.__do_trade(float(price), size, meta=meta)
 
     def sell(self, price, size, meta={}):
-        self.__do_trade(price, -1*size, meta=meta)
+        self.__do_trade(float(price), -1*size, meta=meta)
 
     def quantity(self):
         return self.__quantity

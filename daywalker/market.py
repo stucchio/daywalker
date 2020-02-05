@@ -128,7 +128,7 @@ class Market:
             dt = dt + pd.offsets.BDay()
 
 
-if __name__=='__main__':
+if __name__ == '__main__':
     import sys
     sys.path.append('.')
     import doctest

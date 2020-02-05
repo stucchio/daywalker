@@ -1,20 +1,22 @@
+import pandas as pd
+from collections import namedtuple
 if __package__ is None or __package__ == '':
     from accounting import *
     from _utils import DictableToDataframe, DataframeBuffer
 else:
     from .accounting import *
     from ._utils import DictableToDataframe, DataframeBuffer
-import pandas as pd
-from collections import namedtuple
 
 
 __all__ = ['Broker', 'BrokerInterface', 'Commission']
+
 
 class Commission(namedtuple('Commission', ['trade', 'amount'])):
     def df_dict(self):
         d = self.trade.df_dict()
         d['commission'] = self.amount
         return d
+
 
 class Broker:
     """
