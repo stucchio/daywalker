@@ -48,7 +48,7 @@ class Market:
     ... 'low': [17.5, 17.5, 17.5, 17.15, 17.0],
     ... 'close': [17.5, 17.51, 17.5, 17.34, 17.11],
     ... 'volume': [2545100, 593000, 684700, 295900, 121300],
-    ... 'divCash': [0.0, 0.0, 0.0, 0.0, 0.0],
+    ... 'divCash': [0.0, 0.0, 0.0, 0.10, 0.0],
     ... 'splitFactor': [1.0, 1.0, 1.0, 1.0, 1.0]})
     >>> ta = TradeableAsset('acc', prices)
     >>> b = InteractiveBrokers(10000, {'acc': TradeableAsset('acc', prices)})
@@ -87,8 +87,10 @@ class Market:
 
     Accounting identities that should remain true:
 
+    >>> div = m.broker.dividends()
+
     >>> m.broker.cash()
-    9840.107
+    9840.407
     >>> cap_gain = ((cg['close_price'] - cg['open_price'])*cg['size']).sum()
     >>> cap_gain
     -0.5899999999999963
@@ -105,8 +107,13 @@ class Market:
     6  17.34    -3    acc 2004-08-17 16:00:00-04:00        0
     7  17.25     5    acc 2004-08-18 09:30:00-04:00        1
 
-    Accounting identity: initial_cash = cash + gain/loss from trades + commissions
-    >>> m.broker.cash() + (trades['price']*trades['size']).sum() + commissions['commission'].sum()
+    >>> div = m.broker.dividends()
+    >>> div
+       amount  div_per_share    ex_date  shares symbol
+    0     0.3            0.1 2004-08-17       3    acc
+
+    Accounting identity: initial_cash = cash + gain/loss from trades + commissions - dividends
+    >>> m.broker.cash() + (trades['price']*trades['size']).sum() + commissions['commission'].sum() - div['amount'].sum()
     10000.0
     """
     def __init__(self, start_date, end_date, strategy, broker):

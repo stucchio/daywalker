@@ -1,7 +1,9 @@
 if __package__ is None or __package__ == '':
     from accounting import *
+    from _utils import DictableToDataframe
 else:
     from .accounting import *
+    from ._utils import DictableToDataframe
 import pandas as pd
 from collections import namedtuple
 
@@ -12,6 +14,17 @@ class Commission(namedtuple('Commission', ['trade', 'amount'])):
     def df_dict(self):
         d = self.trade.df_dict()
         d['commission'] = self.amount
+        return d
+
+class Dividend(namedtuple('Dividend', ['symbol', 'ex_date', 'div_per_share', 'shares'])):
+    def amount(self):
+        return self.shares * self.div_per_share
+
+    def df_dict(self):
+        d = { 'symbol': self.symbol, 'ex_date': self.ex_date,
+             'div_per_share': self.div_per_share, 'shares': self.shares
+             }
+        d['amount'] = self.amount()
         return d
 
 class Broker:
@@ -29,7 +42,7 @@ class Broker:
     ... 'low': [17.5, 17.5, 17.5, 17.15, 17.0],
     ... 'close': [17.5, 17.51, 17.5, 17.34, 17.11],
     ... 'volume': [2545100, 593000, 684700, 295900, 121300],
-    ... 'divCash': [0.0, 0.0, 0.0, 0.0, 0.0],
+    ... 'divCash': [0.0, 0.0, 0.0, 0.25, 0.0],
     ... 'splitFactor': [1.0, 1.0, 1.0, 1.0, 1.0]})
     >>> ta = TradeableAsset('acc', prices)
 
@@ -57,6 +70,20 @@ class Broker:
     This time there was a trade.
     >>> b.cash() == (10000 - 17.54*10)
     True
+
+    We also handle dividends.
+
+    >>> old_cash = b.cash()
+    >>> b.execute_dividends(pd.Timestamp('2004-08-17'))
+    >>> div = b.dividends()
+    >>> div[['amount', 'div_per_share', 'ex_date', 'shares', 'symbol']]
+       amount  div_per_share    ex_date  shares symbol
+    0     2.5           0.25 2004-08-17      10    acc
+
+    After issuing dividends, the amount of cash should increase by the appropriate amount.
+
+    >>> b.cash() == (old_cash + div['amount'][0])
+    True
     """
     def __init__(self, initial_cash, assets, margin=0, allow_short=False):
         self.__cash = initial_cash
@@ -69,6 +96,9 @@ class Broker:
         self.__commission_callback = lambda x: None
         self.__assets_owned = set()
         self.__commissions_df = None
+        self.__dividends = DictableToDataframe()
+#        self.__dividends = []
+#        self.__dividends_df = None
 
     def _set_trade_callback(self, cb):
         self.__trade_callback = cb
@@ -86,6 +116,19 @@ class Broker:
     def allow_position(self, symbol, size):
         assert (symbol in self.__assets)
         return (size >= 0) or self.__allow_short
+
+    def execute_dividends(self, dt):
+        result = []
+        for symbol in self.__assets_owned:
+            div = self.__assets[symbol].df['divCash'][dt]
+            if (div == 0):
+                continue
+            d = Dividend(symbol, dt, div, self.__assets[symbol].quantity())
+            self.__dividends.append(d)
+            self.__cash += d.amount()
+
+    def dividends(self):
+        return self.__dividends.get()
 
     def commission(self, trade):
         return None
@@ -111,7 +154,10 @@ class Broker:
         result = []
         for symbol in self.__assets_owned:
             result.append(self.__assets[symbol].owned())
-        return pd.concat(result)
+        if len(result) > 0:
+            return pd.concat(result)
+        else:
+            return pd.DataFrame()
 
     def limit_on_open(self, symbol, dt, price, size, is_buy, meta={}):
         t = self.__limit_on_auction(symbol, dt, price, size, is_buy, meta, 'open')
@@ -283,6 +329,8 @@ class BrokerInterface:
         self.__dt = dt
         self.__after_open = after_open
         self.__positions = self.__broker.positions()
+        if (after_open == False):  # Dividends take effect on the ex-dividend date
+            self.__broker.execute_dividends(self.__dt)
 
     def positions(self):
         return self.__positions
