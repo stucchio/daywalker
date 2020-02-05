@@ -91,14 +91,11 @@ class Broker:
         self.__assets = assets
         self.__margin = margin
         self.__allow_short = allow_short
-        self.__commissions = []
         self.__trade_callback = lambda x: None
         self.__commission_callback = lambda x: None
         self.__assets_owned = set()
-        self.__commissions_df = None
+        self.__commissions = DictableToDataframe()
         self.__dividends = DictableToDataframe()
-#        self.__dividends = []
-#        self.__dividends_df = None
 
     def _set_trade_callback(self, cb):
         self.__trade_callback = cb
@@ -118,7 +115,6 @@ class Broker:
         return (size >= 0) or self.__allow_short
 
     def execute_dividends(self, dt):
-        result = []
         for symbol in self.__assets_owned:
             div = self.__assets[symbol].df['divCash'][dt]
             if (div == 0):
@@ -134,15 +130,7 @@ class Broker:
         return None
 
     def commissions(self):
-        result = []
-        for c in self.__commissions:
-            result.append(c.df_dict())
-        if self.__commissions_df is None:
-            self.__commissions_df = pd.DataFrame(result)
-        else:
-            self.__commissions_df = pd.concat([self.__commissions_df, pd.DataFrame(result)], sort=True)
-        self.__commissions = []
-        return self.__commissions_df
+        return self.__commissions.get()
 
     def __update_asset_owned(self, symbol):
         if self.__assets[symbol].quantity() != 0:
