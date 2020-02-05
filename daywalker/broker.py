@@ -1,9 +1,9 @@
 if __package__ is None or __package__ == '':
     from accounting import *
-    from _utils import DictableToDataframe
+    from _utils import DictableToDataframe, DataframeBuffer
 else:
     from .accounting import *
-    from ._utils import DictableToDataframe
+    from ._utils import DictableToDataframe, DataframeBuffer
 import pandas as pd
 from collections import namedtuple
 
@@ -14,17 +14,6 @@ class Commission(namedtuple('Commission', ['trade', 'amount'])):
     def df_dict(self):
         d = self.trade.df_dict()
         d['commission'] = self.amount
-        return d
-
-class Dividend(namedtuple('Dividend', ['symbol', 'ex_date', 'div_per_share', 'shares'])):
-    def amount(self):
-        return self.shares * self.div_per_share
-
-    def df_dict(self):
-        d = { 'symbol': self.symbol, 'ex_date': self.ex_date,
-             'div_per_share': self.div_per_share, 'shares': self.shares
-             }
-        d['amount'] = self.amount()
         return d
 
 class Broker:
@@ -90,12 +79,13 @@ class Broker:
         self.__cash_vs_time = []
         self.__assets = assets
         self.__margin = margin
+
         self.__allow_short = allow_short
         self.__trade_callback = lambda x: None
         self.__commission_callback = lambda x: None
         self.__assets_owned = set()
         self.__commissions = DictableToDataframe()
-        self.__dividends = DictableToDataframe()
+        self.__dividends = DataframeBuffer()
 
     def _set_trade_callback(self, cb):
         self.__trade_callback = cb
@@ -119,9 +109,15 @@ class Broker:
             div = self.__assets[symbol].df['divCash'][dt]
             if (div == 0):
                 continue
-            d = Dividend(symbol, dt, div, self.__assets[symbol].quantity())
-            self.__dividends.append(d)
-            self.__cash += d.amount()
+            owned = self.__assets[symbol].owned().drop(columns=['price'])
+            owned = owned.rename(columns={'date': 'stock_acquisition_date', 'size': 'shares'}).copy()
+            if len(owned) == 0:
+                continue
+            owned['div_per_share'] = div
+            owned['amount'] = owned['div_per_share'] * owned['shares']
+            owned['ex_date'] = dt
+            self.__cash += owned['amount'].sum()
+            self.__dividends.append(owned)
 
     def dividends(self):
         return self.__dividends.get()

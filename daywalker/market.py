@@ -109,8 +109,8 @@ class Market:
 
     >>> div = m.broker.dividends()
     >>> div
-       amount  div_per_share    ex_date  shares symbol
-    0     0.3            0.1 2004-08-17       3    acc
+         stock_acquisition_date  shares symbol trade_id  div_per_share  amount    ex_date
+    0 2004-08-16 09:30:00-04:00       3    acc        1            0.1     0.3 2004-08-17
 
     Accounting identity: initial_cash = cash + gain/loss from trades + commissions - dividends
     >>> m.broker.cash() + (trades['price']*trades['size']).sum() + commissions['commission'].sum() - div['amount'].sum()
