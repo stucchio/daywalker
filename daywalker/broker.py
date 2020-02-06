@@ -127,6 +127,9 @@ class Broker:
             self.__cash += owned['amount'].sum()
             self.__dividends.append(owned)
 
+    def historical_prices(self, symbol, dt, after_open):
+        return self.__assets[symbol].get_censored(dt, after_open)
+
     def dividends(self):
         return self.__dividends.get()
 
@@ -162,9 +165,6 @@ class Broker:
         if t:
             self.__update_asset_owned(symbol)
         return t
-
-    def historical_prices(self, symbol, dt, after_open):
-        return self.__assets[symbol].get_censored(dt, after_open)
 
     def __limit_on_auction(self, symbol, dt, price, size, is_buy, meta={}, kind=None):
         if is_buy:
@@ -308,6 +308,7 @@ class BrokerInterface:
     >>> b.get_unreported_items()
     ([Trade(price=17.35, size=10, symbol='acc', date=Timestamp('2004-08-17 09:30:00-0400', tz='America/New_York'), meta={'trade_id': 'bar'})], [Commission(trade=Trade(price=17.35, size=10, symbol='acc', date=Timestamp('2004-08-17 09:30:00-0400', tz='America/New_York'), meta={'trade_id': 'bar'}), amount=1.0)])
     """
+
     def __init__(self, broker, dt, after_open=False):
         self.__broker = broker
         self.__dt = dt
@@ -334,6 +335,9 @@ class BrokerInterface:
         self.__commissions_to_report = []
         return (trades, commissions)
 
+    def historical_prices(self, symbol):
+        return self.__broker.historical_prices(symbol, self.__dt, self.__after_open)
+
     def commission(self, trade):
         return self.broker.commission(trade)
 
@@ -352,8 +356,6 @@ class BrokerInterface:
         else:
             raise InvalidOrderException("You can't submit a limit_on_close order until after the open.")
 
-    def historical_prices(self, symbol):
-        return self.__assets[symbol].get_censored(self.__dt, self.__after_open)
 
 
 if __name__=='__main__':

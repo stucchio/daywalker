@@ -128,18 +128,26 @@ class Market:
         else:
             raise ValueError("other_data argument must be an instance of CensoredData. You passed in a " + str(type(other_data)))
 
+    def set_strategy(self, strategy):
+        self.strategy = strategy
+
     def add_asset(self, symbol, asset):
         self.broker.add_asset(symbol, asset)
+
+    def add_data(self, name, data, censor_on_index=True, censor_column=None):
+        self.other_data.add_data(name, data, censor_on_index=censor_on_index, censor_column=censor_column)
 
     def run(self):
         dt = self.start_date
         bi = BrokerInterface(self.broker, dt, after_open=False)
         while (dt <= self.end_date):
             bi.set_date(dt, False)
+            self.other_data.set_date(dt)
+
             trades, commissions = bi.get_unreported_items()
             self.strategy.pre_open(dt, bi, trades, commissions, self.other_data)
+
             bi.set_date(dt, True)
-            self.other_data.set_date(dt)
             trades, commissions = bi.get_unreported_items()
             self.strategy.pre_close(dt, bi, trades, commissions, self.other_data)
             dt = dt + pd.offsets.BDay()

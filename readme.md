@@ -53,7 +53,7 @@ After we run the simulation we can use the metadata to track our trades. If we c
 
 We can now take our `cap_gains` dataframe and do `cap_gains.groupby('open_trade_story_id')` to do an analysis on the level of an individual story (where each story triggered multiple trades). This makes it easy to analyze our capital gains from the *combined long/short* position.
 
-## Tutorial
+# Tutorial
 
 To begin with, we will need some market data. Daywalker does not include market data.
 
@@ -137,7 +137,7 @@ And the following commissions were paid, as per the InteractiveBrokers schedule:
     6  17.34    -3    acc 2004-08-17 16:00:00-04:00        0      0.5202
     7  17.25     5    acc 2004-08-18 09:30:00-04:00        1      0.8625
 
-### Building a strategy
+## Building a strategy
 
 A strategy is a very simple class. Lets build a strategy which attempts to buy a stock, at the open, whenever the price is less than 5% of the previous maximum. It will do this at a rate of 100 shares/day until it owns 1000 shares.
 
@@ -172,3 +172,67 @@ It will attempt to sell 100 whenever the price is greater than 5% of the previou
 At the moment, only the opening/closing auction are supported. The reason is that these are what I use.
 
 Another interesting piece is the `meta={...}` argument. This argument allows you to attach diagnostic information to each trade order. This diagnostic information carries over to capital gains as columns in the resulting dataframe.
+
+## Using non-tick data
+
+An important aspect of trading (particularly inter-day strategies) is using data going beyond tick data. Here's an example:
+
+    >>> wsb = pd.DataFrame({'date': [pd.Timestamp('2004-08-12 00:00:00-0400', tz='America/New_York'),
+    ... pd.Timestamp('2004-08-13 00:00:00-0400', tz='America/New_York'),
+    ... pd.Timestamp('2004-08-16 00:00:00-0400', tz='America/New_York'),
+    ... pd.Timestamp('2004-08-17 00:00:00-0400', tz='America/New_York'),
+    ... pd.Timestamp('2004-08-18 00:00:00-0400', tz='America/New_York')],
+    ... 'rating': [1, 0, 0, 1, 0]})
+
+This data represents an /r/wallstreetbets buy/sell rating - 1 is good, 0 is bad. And /r/wallstreetbets is never wrong, right?
+
+Daywalker allows the use of such data in strategies. As before, we'll create a market. We'll then add this data:
+
+    >>> broker = InteractiveBrokers(10000, assets={'tsla': ta})  # Not real tesla prices
+    >>> m = Market(prices['date'].min() + pd.offsets.BDay(), prices['date'].max(), strategy=_TestStrategy('acc'), broker=broker)
+    >>> m.add_data('wallstreetbets', wsb, censor_on_index=False, censor_column='date')
+
+By default `add_data` will censor the data on it's index (which must be a datetime index). Alternately, we can choose to censor it based on a date time column.
+
+What we mean by *censorship* is the following - the censorship column represents the date at which the data became available. For example, a person posting "TSLA is awesome!" on 2020/2/6 is not usable information until 2020/2/6. In contrast, a person posting "Buy TSLA" on 2019/12/1 is usable information anytime after 2019/12/1.
+
+Thus, when building one's alternative data strategy, it is **vitally important** to build a correct censorship column. Many data sources revise their data after reporting it - things like unemployment numbers are famous for this. Thus, when backtesting a strategy, one must use the data which was available *in the past* rather than the revised version.
+
+Here's a strategy that uses this information:
+
+
+    >>> class WallStreetBetsStrategy(Strategy):
+    ...     """This is used just for the doctests."""
+    ...     def __init__(self, size):
+    ...         self.size = size
+    ...
+    ...     def pre_open(self, dt, broker, trades, commissions, other_data):
+    ...         wsb_rec = other_data.get_data('wallstreetbets')
+    ...         wsb_rec = wsb_rec.set_index('date')
+    ...         if (dt == pd.Timestamp('2004-08-16')):  #  For illustrative purposes
+    ...             print("We can only see data from /r/wallstreetbets from " + str(wsb_rec.index.min()) + " to " + str(wsb_rec.index.max()) + ", which makes sense since today is " + str(dt))
+    ...         prices, _ = broker.historical_prices('tsla')  # Open price is always null inside pre_open
+    ...         last_trade_dt = prices.index.max()
+    ...         last_trade_price = prices['close'][last_trade_dt]
+    ...         if wsb_rec['rating'][dt] == 1:
+    ...             broker.limit_on_open('tsla', price=last_trade_price*1.05, size=self.size, is_buy=True, meta={'trade_id': str(self.size % 2)})
+    ...         else:
+    ...             broker.limit_on_open('tsla', price=last_trade_price*0.95, size=self.size, is_buy=False, meta={'trade_id': str(self.size % 2)})
+    ...
+    ...     def pre_close(self, dt, broker, trades, commissions, other_data):
+    ...         pass
+
+    >>> m.set_strategy(WallStreetBetsStrategy(size=10))
+    >>> m.run()
+    We can only see data from /r/wallstreetbets from 2004-08-12 00:00:00-04:00 to 2004-08-16 00:00:00-04:00, which makes sense since today is 2004-08-16 00:00:00
+
+As we can see from the result of the `print(...)` statement, the alternative data is properly censored.
+
+    >>> m.broker.capital_gains()
+                     close_date  close_price close_trade_id                 open_date  open_price open_trade_id  size symbol
+    0 2004-08-13 16:00:00-04:00        17.51              0 2004-08-12 09:30:00-04:00       17.50             1     1    acc
+    1 2004-08-16 16:00:00-04:00        17.50              1 2004-08-13 09:30:00-04:00       17.50             0     2    acc
+    2 2004-08-17 16:00:00-04:00        17.34              0 2004-08-16 09:30:00-04:00       17.54             1     3    acc
+    0 2004-08-18 09:30:00-04:00        17.25              0 2004-08-17 09:30:00-04:00       17.35             0     4    acc
+    1 2004-08-18 09:30:00-04:00        17.25              0 2004-08-18 09:30:00-04:00       17.25             1     5    acc
+    2 2004-08-18 09:30:00-04:00        17.25              0 2004-08-17 09:30:00-04:00       17.35             0     1    acc
