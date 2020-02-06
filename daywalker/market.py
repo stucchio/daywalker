@@ -2,10 +2,12 @@ if __package__ is None or __package__ == '':
     from accounting import *
     from broker import Broker, BrokerInterface, InteractiveBrokers
     from strategy import Strategy
+    from censorship import CensoredData
 else:
     from .accounting import *
     from .broker import Broker, BrokerInterface, InteractiveBrokers
     from .strategy import Strategy
+    from .censorship import CensoredData
 import pandas as pd
 import abc
 
@@ -18,10 +20,10 @@ class _TestStrategy(Strategy):
         self.symbol = symbol
         self.size = 1
 
-    def pre_open(self, dt, broker, trades, commissions):
+    def pre_open(self, dt, broker, trades, commissions, other_data):
         broker.limit_on_open('acc', price=100, size=self.size, is_buy=True, meta={'trade_id': str(self.size % 2)})
 
-    def pre_close(self, dt, broker, trades, commissions):
+    def pre_close(self, dt, broker, trades, commissions, other_data):
         if (self.size <= 4):
             if (self.size > 1):
                 broker.limit_on_close('acc', price=10, size=self.size-1, is_buy=False, meta={'trade_id': str(self.size % 2)})
@@ -44,8 +46,13 @@ class Market:
     ... 'divCash': [0.0, 0.0, 0.0, 0.10, 0.0],
     ... 'splitFactor': [1.0, 1.0, 1.0, 1.0, 1.0]})
     >>> ta = TradeableAsset('acc', prices)
-    >>> b = InteractiveBrokers(10000, {'acc': TradeableAsset('acc', prices)})
+    >>> b = InteractiveBrokers(10000, {})
     >>> m = Market(prices['date'].min(), prices['date'].max(), _TestStrategy('acc'), b)
+
+    Assets can also be added to the broker/market after creation if this is easier:
+    >>> m.add_asset('acc', prices)
+
+    Finally a backtest can be run:
     >>> m.run()
 
     After running the simulation, we hold the following positions:
@@ -109,11 +116,20 @@ class Market:
     >>> m.broker.cash() + (trades['price']*trades['size']).sum() + commissions['commission'].sum() - div['amount'].sum()
     10000.0
     """
-    def __init__(self, start_date, end_date, strategy, broker):
+    def __init__(self, start_date, end_date, strategy, broker, other_data=None):
         self.start_date = start_date
         self.end_date = end_date
         self.strategy = strategy
         self.broker = broker
+        if other_data is None:
+            self.other_data = CensoredData()
+        elif isinstance(other_data, CensoredData):
+            self.other_data = other_data
+        else:
+            raise ValueError("other_data argument must be an instance of CensoredData. You passed in a " + str(type(other_data)))
+
+    def add_asset(self, symbol, asset):
+        self.broker.add_asset(symbol, asset)
 
     def run(self):
         dt = self.start_date
@@ -121,10 +137,11 @@ class Market:
         while (dt <= self.end_date):
             bi.set_date(dt, False)
             trades, commissions = bi.get_unreported_items()
-            self.strategy.pre_open(dt, bi, trades, commissions)
+            self.strategy.pre_open(dt, bi, trades, commissions, self.other_data)
             bi.set_date(dt, True)
+            self.other_data.set_date(dt)
             trades, commissions = bi.get_unreported_items()
-            self.strategy.pre_close(dt, bi, trades, commissions)
+            self.strategy.pre_close(dt, bi, trades, commissions, self.other_data)
             dt = dt + pd.offsets.BDay()
 
 

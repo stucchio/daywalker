@@ -1,10 +1,10 @@
 import pandas as pd
 from collections import namedtuple
 if __package__ is None or __package__ == '':
-    from accounting import *
+    from accounting import TradeableAsset
     from _utils import DictableToDataframe, DataframeBuffer
 else:
-    from .accounting import *
+    from .accounting import TradeableAsset
     from ._utils import DictableToDataframe, DataframeBuffer
 
 
@@ -88,6 +88,12 @@ class Broker:
         self.__assets_owned = set()
         self.__commissions = DictableToDataframe()
         self.__dividends = DataframeBuffer()
+
+    def add_asset(self, symbol, asset):
+        if isinstance(asset, TradeableAsset):
+            self.__assets[symbol.lower()] = asset
+        else:  # Assume asset is a dataframe of prices
+            self.__assets[symbol.lower()] = TradeableAsset(symbol.lower(), asset)
 
     def _set_trade_callback(self, cb):
         self.__trade_callback = cb
