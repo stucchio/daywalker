@@ -1,10 +1,13 @@
 import pandas as pd
 from collections import namedtuple
+import pytz
 if __package__ is None or __package__ == '':
-    from accounting import TradeableAsset
+    from market_data import TradeableAsset
+    from accounting import AssetAccounting
     from _utils import DictableToDataframe, DataframeBuffer
 else:
-    from .accounting import TradeableAsset
+    from .market_data import TradeableAsset
+    from .accounting import AssetAccounting
     from ._utils import DictableToDataframe, DataframeBuffer
 
 
@@ -69,7 +72,7 @@ class Broker:
     >>> b.cash() == (old_cash + div['amount'][0])
     True
     """
-    def __init__(self, initial_cash, assets, margin=0, allow_short=False):
+    def __init__(self, initial_cash, assets={}, margin=0, allow_short=False, default_timezone=pytz.timezone('America/New_York')):
         self.__cash = initial_cash
         self.__cash_vs_time = []
         self.__assets = assets
@@ -77,13 +80,26 @@ class Broker:
 
         self.__allow_short = allow_short
         self.__trade_callback = lambda x: None
-        self.__assets_owned = set()
         self.__dividends = DataframeBuffer()
         self.__trades = DictableToDataframe()
 
         self.__days_with_data = set()
         for k in self.__assets:
             self.__days_with_data |= self.__assets[k].trading_days()
+
+        self.__asset_accounting = {}
+        self.__capital_gains = DataframeBuffer()
+
+        self.__default_timezone = default_timezone
+
+    def __assets_owned(self):
+        return self.__asset_accounting.keys()
+
+    def __get_asset_accounting(self, symbol):
+        symbol = symbol.lower()
+        if not (symbol in self.__asset_accounting):
+            self.__asset_accounting[symbol] = AssetAccounting(symbol)
+        return self.__asset_accounting[symbol]
 
     def add_asset(self, symbol, asset):
         if isinstance(asset, TradeableAsset):
@@ -110,7 +126,7 @@ class Broker:
         return (size >= 0) or self.__allow_short
 
     def execute_dividends(self, dt):
-        for symbol in self.__assets_owned:
+        for symbol in self.__assets_owned():
             try:
                 div = self.__assets[symbol].df['divCash'][dt]
             except KeyError:
@@ -118,13 +134,14 @@ class Broker:
                 continue  # This typically happens when the symbol either wasn't live at that time, or when it wasn't a trading day
             if (div == 0):
                 continue
-            owned = self.__assets[symbol].owned().drop(columns=['price'])
+            owned = self.__get_asset_accounting(symbol).owned().drop(columns=['price'])
             owned = owned.rename(columns={'date': 'stock_acquisition_date', 'size': 'shares'}).copy()
             if len(owned) == 0:
                 continue
             owned['div_per_share'] = div
             owned['amount'] = owned['div_per_share'] * owned['shares']
             owned['ex_date'] = dt
+            del owned['commission_per_share']
             self.__cash += owned['amount'].sum()
             self.__dividends.append(owned)
 
@@ -138,15 +155,16 @@ class Broker:
         return 0
 
     def __update_asset_owned(self, symbol):
-        if self.__assets[symbol].quantity() != 0:
-            self.__assets_owned.add(symbol)
-        else:
-            self.__assets_owned.discard(symbol)
+        symbol = symbol.lower()
+        aa = self.__get_asset_accounting(symbol)
+        if aa.quantity() == 0:
+            self.__capital_gains.append(aa.capital_gains())
+            del self.__asset_accounting[symbol]
 
     def positions(self):
         result = []
-        for symbol in self.__assets_owned:
-            result.append(self.__assets[symbol].owned())
+        for symbol in self.__assets_owned():
+            result.append(self.__get_asset_accounting(symbol).owned())
         if len(result) > 0:
             return pd.concat(result)
         else:
@@ -165,12 +183,14 @@ class Broker:
         return t
 
     def __limit_on_auction(self, symbol, dt, price, size, is_buy, meta={}, kind=None):
+        symbol = symbol.lower()
         if is_buy:
             signed_size = size
         else:
             signed_size = -1*size
 
-        asset = self.__assets[symbol]
+        market_data = self.__assets[symbol]
+        asset = self.__get_asset_accounting(symbol)
         final_position = asset.quantity() + signed_size
         if not self.allow_position(symbol, final_position):
             return None
@@ -179,15 +199,16 @@ class Broker:
             return None
 
         if (kind == 'open'):
-            trade = asset.limit_on_open(dt, price, size, is_buy, meta=meta)
+            trade = market_data.limit_on_open(dt, price, size, is_buy, meta=meta)
         elif (kind == 'close'):
-            trade = asset.limit_on_close(dt, price, size, is_buy, meta=meta)
+            trade = market_data.limit_on_close(dt, price, size, is_buy, meta=meta)
         else:
             trade = None
         if trade:
             commission = self.commission(trade.price, trade.size, trade.size > 0)
             trade = trade.with_commission(commission)
             self.__cash -= trade.cash_cost()
+            self.__get_asset_accounting(symbol.lower()).record_trade(trade)
             self.__append_trade(trade)
         return trade
 
@@ -201,19 +222,11 @@ class Broker:
     def cash_vs_time(self):
         return pd.DataFrame(self.__cash_vs_time).set_index('date')
 
-    def capital_gains_or_losses(self):
-        # WARNING - this is wrongly calculated right now.
-        # It excludes commissions!
-        # The way to fix it is to bring the commissions into this class.
-        result = []
-        for a in self.__assets.values():
-            result += a.capital_gains_or_losses()
-        return result
-
     def capital_gains(self):
         result = []
-        for a in self.__assets.values():
+        for a in self.__asset_accounting.values():
             result.append(a.capital_gains())
+        result.append(self.__capital_gains.get())
         return pd.concat(result)
 
     def trades(self):

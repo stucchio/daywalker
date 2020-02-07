@@ -182,14 +182,15 @@ An important aspect of trading (particularly inter-day strategies) is using data
     ... pd.Timestamp('2004-08-16 00:00:00-0400', tz='America/New_York'),
     ... pd.Timestamp('2004-08-17 00:00:00-0400', tz='America/New_York'),
     ... pd.Timestamp('2004-08-18 00:00:00-0400', tz='America/New_York')],
-    ... 'rating': [1, 0, 0, 1, 0]})
+    ... 'rating': [0, 1, 0, 1, 0]})
 
 This data represents an /r/wallstreetbets buy/sell rating - 1 is good, 0 is bad. And /r/wallstreetbets is never wrong, right?
 
 Daywalker allows the use of such data in strategies. As before, we'll create a market. We'll then add this data:
 
-    >>> broker = InteractiveBrokers(10000, assets={'tsla': ta})  # Not real tesla prices
-    >>> m = Market(prices['date'].min() + pd.offsets.BDay(), prices['date'].max(), strategy=_TestStrategy('acc'), broker=broker)
+    >>> broker = InteractiveBrokers(initial_cash=10000)  # Not real tesla prices
+    >>> broker.add_asset('tsla', prices)
+    >>> m = Market(prices['date'].min() + pd.offsets.BDay(), prices['date'].max(), strategy=None, broker=broker)
     >>> m.add_data('wallstreetbets', wsb, censor_on_index=False, censor_column='date')
 
 By default `add_data` will censor the data on it's index (which must be a datetime index). Alternately, we can choose to censor it based on a date time column.
@@ -203,8 +204,9 @@ Here's a strategy that uses this information:
 
     >>> class WallStreetBetsStrategy(Strategy):
     ...     """This is used just for the doctests."""
-    ...     def __init__(self, size):
+    ...     def __init__(self, size, sell_size):
     ...         self.size = size
+    ...         self.sell_size = sell_size
     ...
     ...     def pre_open(self, dt, broker, trades, other_data):
     ...         wsb_rec = other_data.get_data('wallstreetbets')
@@ -214,25 +216,35 @@ Here's a strategy that uses this information:
     ...         prices, _ = broker.historical_prices('tsla')  # Open price is always null inside pre_open
     ...         last_trade_dt = prices.index.max()
     ...         last_trade_price = prices['close'][last_trade_dt]
-    ...         if wsb_rec['rating'][dt] == 1:
+    ...         if wsb_rec['rating'][dt] > 0:
     ...             broker.limit_on_open('tsla', price=last_trade_price*1.05, size=self.size, is_buy=True, meta={'trade_id': str(self.size % 2)})
     ...         else:
-    ...             broker.limit_on_open('tsla', price=last_trade_price*0.95, size=self.size, is_buy=False, meta={'trade_id': str(self.size % 2)})
+    ...             broker.limit_on_open('tsla', price=last_trade_price*0.95, size=self.sell_size, is_buy=False, meta={'trade_id': str(self.size % 2)})
     ...
     ...     def pre_close(self, dt, broker, trades, other_data):
     ...         pass
 
-    >>> m.set_strategy(WallStreetBetsStrategy(size=10))
+    >>> m.set_strategy(WallStreetBetsStrategy(size=10, sell_size=7))
     >>> m.run()
     We can only see data from /r/wallstreetbets from 2004-08-12 00:00:00-04:00 to 2004-08-16 00:00:00-04:00, which makes sense since today is 2004-08-16 00:00:00
 
 As we can see from the result of the `print(...)` statement, the alternative data is properly censored.
 
+    >>> m.broker.trades()
+       commission                      date  price  size symbol trade_id
+    0         1.0 2004-08-13 09:30:00-04:00  17.50    10   tsla        0
+    1         1.0 2004-08-16 09:30:00-04:00  17.54    -7   tsla        0
+    2         1.0 2004-08-17 09:30:00-04:00  17.35    10   tsla        0
+    3         1.0 2004-08-18 09:30:00-04:00  17.25    -7   tsla        0
+
+As expected, we opened a trade on the 13'th (due to the /r/wallstreetbets recommendation) and sold most of it on the 16'th (next trading day).
+
     >>> m.broker.capital_gains()
-                     close_date  close_price close_trade_id                 open_date  open_price open_trade_id  size symbol
-    0 2004-08-13 16:00:00-04:00        17.51              0 2004-08-12 09:30:00-04:00       17.50             1     1    acc
-    1 2004-08-16 16:00:00-04:00        17.50              1 2004-08-13 09:30:00-04:00       17.50             0     2    acc
-    2 2004-08-17 16:00:00-04:00        17.34              0 2004-08-16 09:30:00-04:00       17.54             1     3    acc
-    0 2004-08-18 09:30:00-04:00        17.25              0 2004-08-17 09:30:00-04:00       17.35             0     4    acc
-    1 2004-08-18 09:30:00-04:00        17.25              0 2004-08-18 09:30:00-04:00       17.25             1     5    acc
-    2 2004-08-18 09:30:00-04:00        17.25              0 2004-08-17 09:30:00-04:00       17.35             0     1    acc
+       close_commission_per_share                close_date  close_price close_trade_id  open_commission_per_share                 open_date  open_price open_trade_id  size symbol
+    0                    0.142857 2004-08-16 09:30:00-04:00        17.54              0                   0.100000 2004-08-13 09:30:00-04:00       17.50             0     7   tsla
+    1                    0.142857 2004-08-18 09:30:00-04:00        17.25              0                   0.142857 2004-08-16 09:30:00-04:00       17.50             0     3   tsla
+    2                    0.142857 2004-08-18 09:30:00-04:00        17.25              0                   0.100000 2004-08-17 09:30:00-04:00       17.35             0     4   tsla
+
+In spite of buying and selling twice, there are actually 3 capital gains. We bought one batch of 10 shares at $17.50 (on 2004-08-13), and sold 7 of them (on 2004-08-16). Then on the 16'th, we bought 10 more shares at $17.35. On the 18'th, when we sold our shares, we first sold the remaining 3 shares we bought on 2004-08-13 and only then sold 4 more shares purchased on 2004-08-17.
+
+This is the FIFO accounting system used by the American Internal Revenue Service.
