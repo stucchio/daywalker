@@ -32,7 +32,7 @@ The tracking information is an important piece here that I want to explain furth
 
 The way this works in daywalker is as follows. Inside my `Strategy` object, I will enter trades in the following manner:
 
-    def pre_open(self, dt, broker, trades, commissions):
+    def pre_open(self, dt, broker, trades, other_data):
         story = get_wallstreetbets_recommendation(dt)
         story_score = get_story_score(story)
         if story_score > self.threshold:
@@ -125,8 +125,8 @@ The following capital gains were achieved:
 
 And the following commissions were paid, as per the InteractiveBrokers schedule:
 
-    >>> commissions = m.broker.commissions()
-    >>> commissions[['price', 'size', 'symbol', 'date', 'trade_id', 'commission']]
+    >>> trades = m.broker.trades()
+    >>> trades[['price', 'size', 'symbol', 'date', 'trade_id', 'commission']]
        price  size symbol                      date trade_id  commission
     0  17.50     1    acc 2004-08-12 09:30:00-04:00        1      0.1750
     1  17.50     2    acc 2004-08-13 09:30:00-04:00        0      0.3500
@@ -206,7 +206,7 @@ Here's a strategy that uses this information:
     ...     def __init__(self, size):
     ...         self.size = size
     ...
-    ...     def pre_open(self, dt, broker, trades, commissions, other_data):
+    ...     def pre_open(self, dt, broker, trades, other_data):
     ...         wsb_rec = other_data.get_data('wallstreetbets')
     ...         wsb_rec = wsb_rec.set_index('date')
     ...         if (dt == pd.Timestamp('2004-08-16')):  #  For illustrative purposes
@@ -219,7 +219,7 @@ Here's a strategy that uses this information:
     ...         else:
     ...             broker.limit_on_open('tsla', price=last_trade_price*0.95, size=self.size, is_buy=False, meta={'trade_id': str(self.size % 2)})
     ...
-    ...     def pre_close(self, dt, broker, trades, commissions, other_data):
+    ...     def pre_close(self, dt, broker, trades, other_data):
     ...         pass
 
     >>> m.set_strategy(WallStreetBetsStrategy(size=10))

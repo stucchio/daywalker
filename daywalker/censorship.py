@@ -1,5 +1,6 @@
 import pandas as pd
 import pytz
+import datetime
 
 
 __all__ = ['CensoredView']
@@ -14,6 +15,7 @@ class CensoredView:
         self.default_timezone = default_timezone
 
     def get_censored(self, dt):
+        dt = pd.to_datetime(dt)
         if (dt.tz is None):
             dt = dt.replace(tzinfo=self.default_timezone)
         if self.censor_on_index:

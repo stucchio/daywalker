@@ -5,9 +5,9 @@ __all__ = ['Strategy']
 
 class Strategy(metaclass=abc.ABCMeta):
     @abc.abstractmethod
-    def pre_open(self, dt, broker, trades, commissions, other_data):
+    def pre_open(self, dt, broker, trades, other_data):
         pass
 
     @abc.abstractmethod
-    def pre_close(self, dt, broker, trades, commissions, other_data):
+    def pre_close(self, dt, broker, trades, other_data):
         pass

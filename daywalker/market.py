@@ -20,10 +20,10 @@ class _TestStrategy(Strategy):
         self.symbol = symbol
         self.size = 1
 
-    def pre_open(self, dt, broker, trades, commissions, other_data):
+    def pre_open(self, dt, broker, trades, other_data):
         broker.limit_on_open('acc', price=100, size=self.size, is_buy=True, meta={'trade_id': str(self.size % 2)})
 
-    def pre_close(self, dt, broker, trades, commissions, other_data):
+    def pre_close(self, dt, broker, trades, other_data):
         if (self.size <= 4):
             if (self.size > 1):
                 broker.limit_on_close('acc', price=10, size=self.size-1, is_buy=False, meta={'trade_id': str(self.size % 2)})
@@ -72,8 +72,8 @@ class Market:
     2       17.54        17.34     3             1 2004-08-16 09:30:00-04:00              0 2004-08-17 16:00:00-04:00    acc
 
     As well as commissions that were paid.
-    >>> commissions = m.broker.commissions()
-    >>> commissions[['price', 'size', 'symbol', 'date', 'trade_id', 'commission']]
+    >>> trades = m.broker.trades()
+    >>> trades[['price', 'size', 'symbol', 'date', 'trade_id', 'commission']]
        price  size symbol                      date trade_id  commission
     0  17.50     1    acc 2004-08-12 09:30:00-04:00        1      0.1750
     1  17.50     2    acc 2004-08-13 09:30:00-04:00        0      0.3500
@@ -89,13 +89,13 @@ class Market:
 
     >>> div = m.broker.dividends()
 
-    >>> m.broker.cash()
-    9840.407
+    >>> abs(m.broker.cash() - 9840.407) < 1e-6
+    True
     >>> cap_gain = ((cg['close_price'] - cg['open_price'])*cg['size']).sum()
     >>> cap_gain
     -0.5899999999999963
 
-    >>> trades = m.broker.trades_df()
+    >>> trades = m.broker.trades()
     >>> trades[['price', 'size', 'symbol', 'date', 'trade_id']]
        price  size symbol                      date trade_id
     0  17.50     1    acc 2004-08-12 09:30:00-04:00        1
@@ -113,8 +113,9 @@ class Market:
     0 2004-08-16 09:30:00-04:00       3    acc        1            0.1     0.3 2004-08-17
 
     Accounting identity: initial_cash = cash + gain/loss from trades + commissions - dividends
-    >>> m.broker.cash() + (trades['price']*trades['size']).sum() + commissions['commission'].sum() - div['amount'].sum()
-    10000.0
+    >>> initial_cash = m.broker.cash() + (trades['price']*trades['size']).sum() + trades['commission'].sum() - div['amount'].sum()   # This should add up to 10000.0, but fuck floating point
+    >>> abs(initial_cash - 10000) < 1e-6
+    True
     """
     def __init__(self, start_date, end_date, strategy, broker, other_data=None):
         self.start_date = start_date
@@ -141,16 +142,20 @@ class Market:
         dt = self.start_date
         bi = BrokerInterface(self.broker, dt, after_open=False)
         while (dt <= self.end_date):
+            if (not self.broker.trading_day(dt)):  # Some days are holidates, and there is no data present.
+                dt = dt + pd.offsets.BDay()
+                continue
             bi.set_date(dt, False)
             self.other_data.set_date(dt)
 
-            trades, commissions = bi.get_unreported_items()
-            self.strategy.pre_open(dt, bi, trades, commissions, self.other_data)
+            trades = bi.get_unreported_items()
+            self.strategy.pre_open(dt, bi, trades, self.other_data)
 
             bi.set_date(dt, True)
-            trades, commissions = bi.get_unreported_items()
-            self.strategy.pre_close(dt, bi, trades, commissions, self.other_data)
+            trades = bi.get_unreported_items()
+            self.strategy.pre_close(dt, bi, trades, self.other_data)
             dt = dt + pd.offsets.BDay()
+
 
 
 if __name__ == '__main__':

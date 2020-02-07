@@ -11,13 +11,6 @@ else:
 __all__ = ['Broker', 'BrokerInterface', 'Commission']
 
 
-class Commission(namedtuple('Commission', ['trade', 'amount'])):
-    def df_dict(self):
-        d = self.trade.df_dict()
-        d['commission'] = self.amount
-        return d
-
-
 class Broker:
     """
     This class handles broker requirements.
@@ -56,7 +49,7 @@ class Broker:
     10000
 
     >>> b.limit_on_open('acc', '2004-08-16', price=50, size=10, is_buy=True)
-    Trade(price=17.54, size=10, symbol='acc', date=Timestamp('2004-08-16 09:30:00-0400', tz='America/New_York'), meta={})
+    Trade(price=17.54, size=10, symbol='acc', date=Timestamp('2004-08-16 09:30:00-0400', tz='America/New_York'), commission=0, meta={})
 
     This time there was a trade.
     >>> b.cash() == (10000 - 17.54*10)
@@ -84,22 +77,26 @@ class Broker:
 
         self.__allow_short = allow_short
         self.__trade_callback = lambda x: None
-        self.__commission_callback = lambda x: None
         self.__assets_owned = set()
-        self.__commissions = DictableToDataframe()
         self.__dividends = DataframeBuffer()
+        self.__trades = DictableToDataframe()
+
+        self.__days_with_data = set()
+        for k in self.__assets:
+            self.__days_with_data |= self.__assets[k].trading_days()
 
     def add_asset(self, symbol, asset):
         if isinstance(asset, TradeableAsset):
             self.__assets[symbol.lower()] = asset
         else:  # Assume asset is a dataframe of prices
             self.__assets[symbol.lower()] = TradeableAsset(symbol.lower(), asset)
+        self.__days_with_data |= self.__assets[symbol.lower()].trading_days()
+
+    def trading_day(self, dt):
+        return (dt in self.__days_with_data)
 
     def _set_trade_callback(self, cb):
         self.__trade_callback = cb
-
-    def _set_commission_callback(self, cb):
-        self.__commission_callback = cb
 
     def allow_margin(self, final_cash):
         """Whether to allow a trade which will result in a final margin."""
@@ -114,7 +111,11 @@ class Broker:
 
     def execute_dividends(self, dt):
         for symbol in self.__assets_owned:
-            div = self.__assets[symbol].df['divCash'][dt]
+            try:
+                div = self.__assets[symbol].df['divCash'][dt]
+            except KeyError:
+                print("Skipping " + symbol + " -> " + str(dt))
+                continue  # This typically happens when the symbol either wasn't live at that time, or when it wasn't a trading day
             if (div == 0):
                 continue
             owned = self.__assets[symbol].owned().drop(columns=['price'])
@@ -133,11 +134,8 @@ class Broker:
     def dividends(self):
         return self.__dividends.get()
 
-    def commission(self, trade):
-        return None
-
-    def commissions(self):
-        return self.__commissions.get()
+    def commission(self, price, size, is_buy):
+        return 0
 
     def __update_asset_owned(self, symbol):
         if self.__assets[symbol].quantity() != 0:
@@ -155,13 +153,13 @@ class Broker:
             return pd.DataFrame()
 
     def limit_on_open(self, symbol, dt, price, size, is_buy, meta={}):
-        t = self.__limit_on_auction(symbol, dt, price, size, is_buy, meta, 'open')
+        t = self.__limit_on_auction(symbol, dt, price, size, is_buy, meta=meta, kind='open')
         if t:
             self.__update_asset_owned(symbol)
         return t
 
     def limit_on_close(self, symbol, dt, price, size, is_buy, meta={}):
-        t = self.__limit_on_auction(symbol, dt, price, size, is_buy, meta, 'close')
+        t = self.__limit_on_auction(symbol, dt, price, size, is_buy, meta=meta, kind='close')
         if t:
             self.__update_asset_owned(symbol)
         return t
@@ -181,28 +179,21 @@ class Broker:
             return None
 
         if (kind == 'open'):
-            trade = asset.limit_on_open(dt, price, size, is_buy, meta)
+            trade = asset.limit_on_open(dt, price, size, is_buy, meta=meta)
         elif (kind == 'close'):
-            trade = asset.limit_on_close(dt, price, size, is_buy, meta)
+            trade = asset.limit_on_close(dt, price, size, is_buy, meta=meta)
         else:
             trade = None
         if trade:
+            commission = self.commission(trade.price, trade.size, trade.size > 0)
+            trade = trade.with_commission(commission)
             self.__cash -= trade.cash_cost()
-            comm = self.commission(trade)
-            if comm:
-                self.__cash -= comm.amount
-                self.__append_commission(comm)
-
-        if trade:
             self.__append_trade(trade)
         return trade
 
-    def __append_commission(self, commission):
-        self.__commissions.append(commission)
-        self.__commission_callback(commission)
-
     def __append_trade(self, trade):
         self.__trade_callback(trade)
+        self.__trades.append(trade)
 
     def cash(self):
         return self.__cash
@@ -211,6 +202,9 @@ class Broker:
         return pd.DataFrame(self.__cash_vs_time).set_index('date')
 
     def capital_gains_or_losses(self):
+        # WARNING - this is wrongly calculated right now.
+        # It excludes commissions!
+        # The way to fix it is to bring the commissions into this class.
         result = []
         for a in self.__assets.values():
             result += a.capital_gains_or_losses()
@@ -222,11 +216,12 @@ class Broker:
             result.append(a.capital_gains())
         return pd.concat(result)
 
+    def trades(self):
+        return self.__trades.get()
+
     def trades_df(self):
-        result = []
-        for a in self.__assets.values():
-            result.append(a.trades_df())
-        return pd.concat(result)
+        print("Deprecated")
+        return self.trades()
 
 
 class InteractiveBrokers(Broker):
@@ -250,25 +245,29 @@ class InteractiveBrokers(Broker):
 
     >>> b = InteractiveBrokers(1000000, {'acc': TradeableAsset('acc', prices)})
     >>> b.limit_on_open('acc', '2004-08-16', price=50, size=10, is_buy=True, meta={'trade_id': 'bar'})
-    Trade(price=17.54, size=10, symbol='acc', date=Timestamp('2004-08-16 09:30:00-0400', tz='America/New_York'), meta={'trade_id': 'bar'})
+    Trade(price=17.54, size=10, symbol='acc', date=Timestamp('2004-08-16 09:30:00-0400', tz='America/New_York'), commission=1.0, meta={'trade_id': 'bar'})
 
     >>> b.cash()
     999823.6
 
     >>> b.limit_on_open('acc', '2004-08-16', price=50, size=350, is_buy=True, meta={'trade_id': 'foo'})
-    Trade(price=17.54, size=350, symbol='acc', date=Timestamp('2004-08-16 09:30:00-0400', tz='America/New_York'), meta={'trade_id': 'foo'})
+    Trade(price=17.54, size=350, symbol='acc', date=Timestamp('2004-08-16 09:30:00-0400', tz='America/New_York'), commission=1.75, meta={'trade_id': 'foo'})
+    >>> b.limit_on_open('acc', '2004-08-16', price=50, size=1, is_buy=True, meta={'trade_id': 'foo'})
+    Trade(price=17.54, size=1, symbol='acc', date=Timestamp('2004-08-16 09:30:00-0400', tz='America/New_York'), commission=0.1754, meta={'trade_id': 'foo'})
+
 
     Simple arithmetic suggests that cash should be 10000 - 17.54*10 = 9824.6, but the commission is also
     taken into account.
-    >>> b.commissions()[['price', 'size', 'symbol', 'date', 'trade_id', 'commission']]
+    >>> b.trades()[['price', 'size', 'symbol', 'date', 'trade_id', 'commission']]
        price  size symbol                      date trade_id  commission
-    0  17.54    10    acc 2004-08-16 09:30:00-04:00      bar        1.00
-    1  17.54   350    acc 2004-08-16 09:30:00-04:00      foo        1.75
+    0  17.54    10    acc 2004-08-16 09:30:00-04:00      bar      1.0000
+    1  17.54   350    acc 2004-08-16 09:30:00-04:00      foo      1.7500
+    2  17.54     1    acc 2004-08-16 09:30:00-04:00      foo      0.1754
     """
 
-    def commission(self, trade):
-        amt = min(max(1.0, 0.005*abs(trade.size)), 0.01*abs(trade.size)*trade.price)
-        return Commission(trade, amt)
+    def commission(self, price, size, is_buy):
+        return min(max(1.0, 0.005*abs(size)), 0.01*abs(size)*price)
+
 
 class BrokerException(Exception):
     pass
@@ -306,7 +305,8 @@ class BrokerInterface:
     After market open, these will be available from the get_unreported_items() method.
 
     >>> b.get_unreported_items()
-    ([Trade(price=17.35, size=10, symbol='acc', date=Timestamp('2004-08-17 09:30:00-0400', tz='America/New_York'), meta={'trade_id': 'bar'})], [Commission(trade=Trade(price=17.35, size=10, symbol='acc', date=Timestamp('2004-08-17 09:30:00-0400', tz='America/New_York'), meta={'trade_id': 'bar'}), amount=1.0)])
+       commission                      date  price  size symbol trade_id
+    0         1.0 2004-08-17 09:30:00-04:00  17.35    10    acc      bar
     """
 
     def __init__(self, broker, dt, after_open=False):
@@ -314,9 +314,10 @@ class BrokerInterface:
         self.__dt = dt
         self.__after_open = after_open
         self.__trades_to_report = []
-        self.__commissions_to_report = []
         self.__broker._set_trade_callback(lambda t: self.__trades_to_report.append(t))
-        self.__broker._set_commission_callback(lambda c: self.__commissions_to_report.append(c))
+
+    def cash(self):
+        return self.__broker.cash()
 
     def set_date(self, dt, after_open):
         self.__dt = dt
@@ -330,10 +331,9 @@ class BrokerInterface:
 
     def get_unreported_items(self):
         trades = self.__trades_to_report
+        trades = pd.DataFrame([t.df_dict() for t in trades])
         self.__trades_to_report = []
-        commissions = self.__commissions_to_report
-        self.__commissions_to_report = []
-        return (trades, commissions)
+        return trades
 
     def historical_prices(self, symbol):
         return self.__broker.historical_prices(symbol, self.__dt, self.__after_open)

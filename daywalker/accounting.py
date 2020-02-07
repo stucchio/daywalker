@@ -2,6 +2,7 @@ from collections import namedtuple
 import pandas as pd
 import numpy as np
 import datetime
+import numbers
 import pytz
 if __package__ is None or __package__ == '':
     from _utils import DictableToDataframe, HasDfDict
@@ -28,12 +29,15 @@ class CapitalGainOrLoss(namedtuple('CapitalGainOrLoss', ['open_price', 'close_pr
         return (self.close_price - self.open_price) * self.size
 
 
-class Trade(namedtuple('Trade', ['price', 'size', 'symbol', 'date', 'meta']), HasDfDict):
-    DICT_COLUMNS = ['price', 'size', 'symbol', 'date']
+class Trade(namedtuple('Trade', ['price', 'size', 'symbol', 'date', 'commission', 'meta']), HasDfDict):
+    DICT_COLUMNS = ['price', 'size', 'symbol', 'date', 'commission']
     META_FIELDS = [('meta', '')]
 
+    def with_commission(self, commission):  # The commission gets added later, by the broker
+        return Trade(self.price, self.size, self.symbol, self.date, commission, self.meta)
+
     def cash_cost(self):
-        return self.price * self.size
+        return (self.price * self.size) + self.commission
 
 
 class AssetAccounting:
@@ -186,7 +190,7 @@ class TradeableAsset:
     did not have a match. If we submitted a price at a higher value, we'd have gotten a fill:
     >>> trade = ta.limit_on_open('2004-08-16', price=20, size=10, is_buy=True, meta={'buy_reason': '/r/wallstreetbets told me to'})
     >>> trade
-    Trade(price=17.54, size=10, symbol='acc', date=Timestamp('2004-08-16 09:30:00-0400', tz='America/New_York'), meta={'buy_reason': '/r/wallstreetbets told me to'})
+    Trade(price=17.54, size=10, symbol='acc', date=Timestamp('2004-08-16 09:30:00-0400', tz='America/New_York'), commission=0, meta={'buy_reason': '/r/wallstreetbets told me to'})
 
     Now lets check how much we spent:
     >>> trade.cash_cost()
@@ -195,7 +199,7 @@ class TradeableAsset:
     The same works for sales.
 
     >>> ta.limit_on_close('2004-08-16', price=10, size=5, is_buy=False)
-    Trade(price=17.5, size=-5, symbol='acc', date=Timestamp('2004-08-16 16:00:00-0400', tz='America/New_York'), meta={})
+    Trade(price=17.5, size=-5, symbol='acc', date=Timestamp('2004-08-16 16:00:00-0400', tz='America/New_York'), commission=0, meta={})
 
     At this point we have a capital gain.
     >>> ta.capital_gains()[['open_price', 'close_price', 'size', 'open_buy_reason', 'open_date', 'close_date', 'symbol']]  # Explicitly specifying order for unit tests
@@ -225,7 +229,6 @@ class TradeableAsset:
         self.asset_accounting = AssetAccounting(symbol)
         self.open_time = open_time
         self.close_time = close_time
-        self.__trades = []
 
     def owned(self):
         return self.asset_accounting.owned()
@@ -248,16 +251,13 @@ class TradeableAsset:
     def quantity(self):
         return self.asset_accounting.quantity()
 
-    def trades_df(self):
-        result = []
-        for t in self.__trades:
-            result.append(t.df_dict())
-        return pd.DataFrame(result)
+    def trading_days(self):
+        return set(self.df.index)
 
-    def limit_on_open(self, dt, price, size, is_buy, meta={}):
+    def limit_on_open(self, dt, price, size, is_buy, *, meta={}):
         return self.__handle_auction(dt, price, size, is_buy, 'open', meta, auction_time=self.open_time)
 
-    def limit_on_close(self, dt, price, size, is_buy, meta={}):
+    def limit_on_close(self, dt, price, size, is_buy, *, meta={}):
         return self.__handle_auction(dt, price, size, is_buy, 'close', meta, auction_time=self.close_time)
 
     def __copy_add_to_meta(self, meta, kv):
@@ -266,7 +266,17 @@ class TradeableAsset:
             meta[k] = v
         return meta
 
+    def record_trade(self, trade):
+        self.__trades.append(t)
+
     def __handle_auction(self, dt, price, size, is_buy, kind, meta={}, auction_time=None):
+        """
+        This will return a trade that could plausibly be completed. It will not record the trade until
+        the `self.record_trade` method is called.
+        """
+        assert isinstance(price, numbers.Number)
+        assert isinstance(size, numbers.Number)
+        assert (kind == 'close') or (kind == 'open')
         if isinstance(dt, str):
             dt = pd.Timestamp(dt)
         dt_report = dt.replace(hour=auction_time.hour, minute=auction_time.minute, tzinfo=auction_time.tzinfo)
@@ -274,15 +284,13 @@ class TradeableAsset:
         meta = meta.copy()
         if is_buy:
             if (open_price <= price):
-                t = Trade(open_price, size, self.symbol, dt_report, meta)
+                t = Trade(open_price, size, self.symbol, dt_report, commission=0, meta=meta)
                 self.asset_accounting.buy(open_price, size, meta=self.__copy_add_to_meta(meta, [('date', dt_report)]))
-                self.__trades.append(t)
                 return t
         else:
             if (open_price >= price):
-                t = Trade(open_price, -1*size, self.symbol, dt_report, meta)
+                t = Trade(open_price, -1*size, self.symbol, dt_report, commission=0, meta=meta)
                 self.asset_accounting.sell(open_price, size, meta=self.__copy_add_to_meta(meta, [('date', dt_report)]))
-                self.__trades.append(t)
                 return t
 
 
