@@ -134,8 +134,10 @@ class Broker:
                 continue  # This typically happens when the symbol either wasn't live at that time, or when it wasn't a trading day
             if (div == 0):
                 continue
-            owned = self.__get_asset_accounting(symbol).owned().drop(columns=['price'])
-            owned = owned.rename(columns={'date': 'stock_acquisition_date', 'size': 'shares'}).copy()
+            owned = self.__get_asset_accounting(symbol).owned()
+            if len(owned) == 0:
+                continue
+            owned = owned.drop(columns=['price']).rename(columns={'date': 'stock_acquisition_date', 'size': 'shares'}).copy()
             if len(owned) == 0:
                 continue
             owned['div_per_share'] = div
@@ -193,9 +195,14 @@ class Broker:
         asset = self.__get_asset_accounting(symbol)
         final_position = asset.quantity() + signed_size
         if not self.allow_position(symbol, final_position):
+            print("Rejected " + str((symbol, dt, price, size, is_buy)) + " because position not allowed.")
             return None
-        final_cash = self.cash() - price*size
+        if is_buy:
+            final_cash = self.cash() - price*size
+        else:
+            final_cash = self.cash() + price*size
         if not self.allow_margin(final_cash):
+            print("Rejected " + str((symbol, dt, price, size, is_buy)) + " because final cash not allowd: " + str(final_cash))
             return None
 
         if (kind == 'open'):
