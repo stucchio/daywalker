@@ -98,6 +98,23 @@ class Broker:
     def strategy_values(self):
         return self.__asset_values.get()
 
+    @lru_cache(maxsize=1024)
+    def last_price(self, symbol, dt, is_open):
+        prices, open_price = self.historical_prices(symbol, dt, is_open)
+        if (open_price is None):
+            return prices['close'].values[-1]
+        else:
+            return open_price
+
+    def positions_marked_to_market(self, dt, is_open):
+        pos = self.positions().copy()
+        if (len(pos) > 0):
+            pos['current_value'] = pos['symbol'].apply(self.last_price, dt=dt, is_open=is_open)
+            pos['market_value'] = pos['size'] * pos['current_value']
+            pos['mark_to_market_time'] = pos['symbol'].apply(lambda s: self.__assets[s].date_with_time_of_day(dt, is_open))
+
+        return pos
+
     def record_strategy_values(self, dt):
         result = {
             'date': dt,
@@ -402,6 +419,12 @@ class BrokerInterface:
             self.__broker.limit_on_close(symbol, self.__dt, price, size, is_buy, meta)
         else:
             raise InvalidOrderException("You can't submit a limit_on_close order until after the open.")
+
+    def last_price(self, symbol):
+        return self.__broker.last_price(symbol, self.__dt, self.__after_open)
+
+    def positions_marked_to_market(self):
+        self.__broker.positions_marked_to_market(self.__dt, self.__after_open)
 
 
 

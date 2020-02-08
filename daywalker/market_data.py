@@ -120,6 +120,12 @@ class TradeableAsset:
             meta[k] = v
         return meta
 
+    def date_with_time_of_day(self, dt, after_open):
+        if after_open:
+            return dt.replace(hour=self.close_time.hour, minute=self.close_time.minute, tzinfo=self.close_time.tzinfo)
+        else:
+            return dt.replace(hour=self.open_time.hour, minute=self.open_time.minute, tzinfo=self.open_time.tzinfo)
+
     def __handle_auction(self, dt, price, size, is_buy, kind, meta={}, auction_time=None):
         """
         This will return a trade that the market would execute.

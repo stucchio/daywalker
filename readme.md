@@ -114,6 +114,14 @@ At the end of the backtest, we hold these positions:
     0  17.35     4    acc        0 2004-08-17 09:30:00-04:00
     1  17.25     5    acc        1 2004-08-18 09:30:00-04:00
 
+You can also get the positions marked to market at any given time:
+
+    >>> m.broker.positions_marked_to_market(pd.Timestamp('2004-08-17'), False)
+       commission_per_share                      date  price  size symbol trade_id  current_value  market_value       mark_to_market_time
+    0                0.1735 2004-08-17 09:30:00-04:00  17.35     4    acc        0           17.5          70.0 2004-08-17 09:30:00-04:00
+    1                0.1725 2004-08-18 09:30:00-04:00  17.25     5    acc        1           17.5          87.5 2004-08-17 09:30:00-04:00
+
+
 The following capital gains were achieved:
 
     >>> cg = m.broker.capital_gains()
