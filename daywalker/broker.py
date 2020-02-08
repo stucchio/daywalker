@@ -387,6 +387,7 @@ class BrokerInterface:
         self.__dt = dt
         self.__after_open = after_open
         self.__positions = self.__broker.positions()
+        self.__positions_marked_to_market = self.__broker.positions_marked_to_market(self.__dt, self.__after_open)
         if (after_open == False):  # Dividends take effect on the ex-dividend date
             self.__broker.execute_dividends(self.__dt)
 
@@ -424,7 +425,7 @@ class BrokerInterface:
         return self.__broker.last_price(symbol, self.__dt, self.__after_open)
 
     def positions_marked_to_market(self):
-        self.__broker.positions_marked_to_market(self.__dt, self.__after_open)
+        return self.__positions_marked_to_market
 
 
 
