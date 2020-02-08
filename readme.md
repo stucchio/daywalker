@@ -137,7 +137,7 @@ And the following commissions were paid, as per the InteractiveBrokers schedule:
     6  17.34    -3    acc 2004-08-17 16:00:00-04:00        0      0.5202
     7  17.25     5    acc 2004-08-18 09:30:00-04:00        1      0.8625
 
-After the strategy has run, we can observe how it performed:
+After the strategy has run, we can observe how it performed over time:
 
     >>> m.broker.strategy_values()
             cash       date  long_equities  short_equities
@@ -228,9 +228,13 @@ Here's a strategy that uses this information:
     ...         last_trade_dt = prices.index.max()
     ...         last_trade_price = prices['close'][last_trade_dt]
     ...         if wsb_rec['rating'][dt] > 0:
-    ...             broker.limit_on_open('tsla', price=last_trade_price*1.05, size=self.size, is_buy=True, meta={'trade_id': str(self.size % 2)})
+    ...             buy_order_price = last_trade_price*1.05
+    ...             broker.limit_on_open('tsla', price=buy_order_price, size=self.size, is_buy=True, meta={'trade_id': str(self.size % 2)})
+    ...             self.log('my_custom_log', {'buy_order_price': buy_order_price, 'sell_order_price': None}, dt)
     ...         else:
-    ...             broker.limit_on_open('tsla', price=last_trade_price*0.95, size=self.sell_size, is_buy=False, meta={'trade_id': str(self.size % 2)})
+    ...             sell_order_price = last_trade_price*0.95
+    ...             broker.limit_on_open('tsla', price=sell_order_price, size=self.sell_size, is_buy=False, meta={'trade_id': str(self.size % 2)})
+    ...             self.log('my_custom_log', {'buy_order_price': None, 'sell_order_price': sell_order_price}, dt)
     ...
     ...     def pre_close(self, dt, broker, trades, other_data):
     ...         pass
@@ -259,3 +263,19 @@ As expected, we opened a trade on the 13'th (due to the /r/wallstreetbets recomm
 In spite of buying and selling twice, there are actually 3 capital gains. We bought one batch of 10 shares at $17.50 (on 2004-08-13), and sold 7 of them (on 2004-08-16). Then on the 16'th, we bought 10 more shares at $17.35. On the 18'th, when we sold our shares, we first sold the remaining 3 shares we bought on 2004-08-13 and only then sold 4 more shares purchased on 2004-08-17.
 
 This is the FIFO accounting system used by the American Internal Revenue Service.
+
+
+### Logging
+
+Note our use of the `log` method on `Strategy`. The result of this can be accessed as follows:
+
+    >>> m.strategy_log('my_custom_log')
+       buy_order_price       date  sell_order_price
+    0           18.375 2004-08-13               NaN
+    1              NaN 2004-08-16           16.6345
+    2           18.375 2004-08-17               NaN
+    3              NaN 2004-08-18           16.4730
+
+This can be used to track debugging information from inside the strategy.
+
+For example, I am currently developing a market-neutral strategy that seems to randomly go very long or short a few times a year. To debug, I will keep a log of the *desired* allocation as described by the strategy. This will help me determine if the problem is in the core allocation logic, or if some trades are simply failing to execute.

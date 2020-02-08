@@ -138,6 +138,9 @@ class Market:
     def add_data(self, name, data, censor_on_index=True, censor_column=None):
         self.other_data.add_data(name, data, censor_on_index=censor_on_index, censor_column=censor_column)
 
+    def strategy_log(self, name):
+        return self.strategy.get_log(name)
+
     def run(self):
         dt = self.start_date
         bi = BrokerInterface(self.broker, dt, after_open=False)
