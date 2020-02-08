@@ -137,6 +137,17 @@ And the following commissions were paid, as per the InteractiveBrokers schedule:
     6  17.34    -3    acc 2004-08-17 16:00:00-04:00        0      0.5202
     7  17.25     5    acc 2004-08-18 09:30:00-04:00        1      0.8625
 
+After the strategy has run, we can observe how it performed:
+
+    >>> m.broker.strategy_values()
+            cash       date  long_equities  short_equities
+    0  9982.3250 2004-08-13          17.50             0.0
+    1  9964.3099 2004-08-16          35.02             0.0
+    2  9945.8137 2004-08-17          52.50             0.0
+    3  9927.2195 2004-08-18          69.36             0.0
+    4  9840.1070 2004-08-19         156.06             0.0
+
+
 ## Building a strategy
 
 A strategy is a very simple class. Lets build a strategy which attempts to buy a stock, at the open, whenever the price is less than 5% of the previous maximum. It will do this at a rate of 100 shares/day until it owns 1000 shares.

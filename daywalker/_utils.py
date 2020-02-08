@@ -21,13 +21,19 @@ class DictableToDataframe:
         self.df_result = pd.DataFrame()
 
     def append(self, o):
+        if isinstance(o, dict):
+            self.buffer.append(o)
+        else:
+            self.buffer.append(o.df_dict())
+
+    def append_dict(self, o):
         self.buffer.append(o)
 
     def get(self):
         if len(self.buffer) == 0:  # Easy case
             return self.df_result
 
-        result = [o.df_dict() for o in self.buffer]
+        result = [o for o in self.buffer]
         self.buffer = []
         if len(self.df_result) == 0:
             self.df_result = pd.DataFrame(result)

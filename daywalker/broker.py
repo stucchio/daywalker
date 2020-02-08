@@ -1,6 +1,7 @@
 import pandas as pd
 from collections import namedtuple
 import pytz
+from functools import lru_cache
 if __package__ is None or __package__ == '':
     from market_data import TradeableAsset
     from accounting import AssetAccounting
@@ -92,6 +93,33 @@ class Broker:
 
         self.__default_timezone = default_timezone
 
+        self.__asset_values = DictableToDataframe()
+
+    def strategy_values(self):
+        return self.__asset_values.get()
+
+    def record_strategy_values(self, dt):
+        result = {
+            'date': dt,
+            'cash': self.cash(),
+            'long_equities': 0,
+            'short_equities': 0,
+        }
+
+        pos = self.positions().copy()
+        if len(pos) > 0:
+            @lru_cache(maxsize=1024)
+            def __mark_to_market(symbol):
+                prices, _ = self.historical_prices(symbol, dt, False)
+                return prices['close'].values[-1]
+
+            pos['current_value'] = pos['symbol'].apply(__mark_to_market)
+            pos['market_value'] = pos['size'] * pos['current_value']
+            result['long_equities'] = pos[pos['size'] > 0]['market_value'].sum()
+            result['short_equities'] = pos[pos['size'] < 0]['market_value'].sum()
+
+        self.__asset_values.append(result)
+
     def __assets_owned(self):
         return self.__asset_accounting.keys()
 
@@ -165,6 +193,7 @@ class Broker:
 
     def positions(self):
         result = []
+
         for symbol in self.__assets_owned():
             result.append(self.__get_asset_accounting(symbol).owned())
         if len(result) > 0:
@@ -195,14 +224,12 @@ class Broker:
         asset = self.__get_asset_accounting(symbol)
         final_position = asset.quantity() + signed_size
         if not self.allow_position(symbol, final_position):
-            print("Rejected " + str((symbol, dt, price, size, is_buy)) + " because position not allowed.")
             return None
         if is_buy:
             final_cash = self.cash() - price*size
         else:
             final_cash = self.cash() + price*size
         if not self.allow_margin(final_cash):
-            print("Rejected " + str((symbol, dt, price, size, is_buy)) + " because final cash not allowd: " + str(final_cash))
             return None
 
         if (kind == 'open'):

@@ -155,6 +155,7 @@ class Market:
             trades = bi.get_unreported_items()
             self.strategy.pre_close(dt, bi, trades, self.other_data)
             dt = dt + pd.offsets.BDay()
+            self.broker.record_strategy_values(dt)
 
 
 
