@@ -286,4 +286,4 @@ Note our use of the `log` method on `Strategy`. The result of this can be access
 
 This can be used to track debugging information from inside the strategy.
 
-For example, I am currently developing a market-neutral strategy that seems to randomly go very long or short a few times a year. To debug, I will keep a log of the *desired* allocation as described by the strategy. This will help me determine if the problem is in the core allocation logic, or if some trades are simply failing to execute.
+For example, I am currently developing a market-neutral strategy that seems to randomly go long or short a few times a year. To debug, I will keep a log of the *desired* allocation as described by the strategy. If the desired allocation matches the actual, this tells me if the problem is in the core allocation logic. In contrast, if they differ, then some trades are simply failing to execute.
