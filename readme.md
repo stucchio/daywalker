@@ -263,10 +263,10 @@ As we can see from the result of the `print(...)` statement, the alternative dat
 As expected, we opened a trade on the 13'th (due to the /r/wallstreetbets recommendation) and sold most of it on the 16'th (next trading day).
 
     >>> m.broker.capital_gains()
-       close_commission_per_share                close_date  close_price close_trade_id  open_commission_per_share                 open_date  open_price open_trade_id  size symbol
-    0                    0.142857 2004-08-16 09:30:00-04:00        17.54              0                   0.100000 2004-08-13 09:30:00-04:00       17.50             0     7   tsla
-    1                    0.142857 2004-08-18 09:30:00-04:00        17.25              0                   0.142857 2004-08-16 09:30:00-04:00       17.50             0     3   tsla
-    2                    0.142857 2004-08-18 09:30:00-04:00        17.25              0                   0.100000 2004-08-17 09:30:00-04:00       17.35             0     4   tsla
+       close_commission_per_share                close_date  close_price close_trade_id  open_commission_per_share                 open_date  open_price open_trade_id  size symbol      gain
+    0                    0.142857 2004-08-16 09:30:00-04:00        17.54              0                   0.100000 2004-08-13 09:30:00-04:00       17.50             0     7   tsla -1.420000
+    1                    0.142857 2004-08-18 09:30:00-04:00        17.25              0                   0.142857 2004-08-16 09:30:00-04:00       17.50             0     3   tsla -1.607143
+    2                    0.142857 2004-08-18 09:30:00-04:00        17.25              0                   0.100000 2004-08-17 09:30:00-04:00       17.35             0     4   tsla -1.371429
 
 In spite of buying and selling twice, there are actually 3 capital gains. We bought one batch of 10 shares at $17.50 (on 2004-08-13), and sold 7 of them (on 2004-08-16). Then on the 16'th, we bought 10 more shares at $17.35. On the 18'th, when we sold our shares, we first sold the remaining 3 shares we bought on 2004-08-13 and only then sold 4 more shares purchased on 2004-08-17.
 

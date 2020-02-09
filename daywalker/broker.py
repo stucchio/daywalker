@@ -278,7 +278,9 @@ class Broker:
         for a in self.__asset_accounting.values():
             result.append(a.capital_gains())
         result.append(self.__capital_gains.get())
-        return pd.concat(result)
+        result = pd.concat(result)
+        result['gain'] = ((result['close_price'] - result['open_price'] - result['close_commission_per_share'] - result['open_commission_per_share'])*result['size'])
+        return result
 
     def trades(self):
         return self.__trades.get()
