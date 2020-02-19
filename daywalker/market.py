@@ -38,13 +38,13 @@ class Market:
     ... pd.Timestamp('2004-08-16 00:00:00-0400', tz='America/New_York'),
     ... pd.Timestamp('2004-08-17 00:00:00-0400', tz='America/New_York'),
     ... pd.Timestamp('2004-08-18 00:00:00-0400', tz='America/New_York')],
-    ... 'open': [17.5, 17.5, 17.54, 17.35, 17.25],
-    ... 'high': [17.58, 17.51, 17.54, 17.4, 17.29],
-    ... 'low': [17.5, 17.5, 17.5, 17.15, 17.0],
-    ... 'close': [17.5, 17.51, 17.5, 17.34, 17.11],
+    ... 'open': [17.5, 17.5, 17.54, 17.35, 8.62],
+    ... 'high': [17.58, 17.51, 17.54, 17.4, 8.65],
+    ... 'low': [17.5, 17.5, 17.5, 17.15, 8.5],
+    ... 'close': [17.5, 17.51, 17.5, 17.34, 8.56],
     ... 'volume': [2545100, 593000, 684700, 295900, 121300],
     ... 'divCash': [0.0, 0.0, 0.0, 0.10, 0.0],
-    ... 'splitFactor': [1.0, 1.0, 1.0, 1.0, 1.0]})
+    ... 'splitFactor': [1.0, 1.0, 1.0, 1.0, 2.0]})
     >>> ta = TradeableAsset('acc', prices)
     >>> b = InteractiveBrokers(10000, {})
     >>> m = Market(prices['date'].min(), prices['date'].max(), _TestStrategy('acc'), b)
@@ -58,8 +58,8 @@ class Market:
     After running the simulation, we hold the following positions:
     >>> m.broker.positions()[['price', 'size', 'symbol', 'trade_id', 'date']]
        price  size symbol trade_id                      date
-    0  17.35     4    acc        0 2004-08-17 09:30:00-04:00
-    1  17.25     5    acc        1 2004-08-18 09:30:00-04:00
+    0  8.675   8.0    acc        0 2004-08-17 09:30:00-04:00
+    1  8.620   5.0    acc        1 2004-08-18 09:30:00-04:00
 
     Note that what is reported includes all the different potential cost bases.
 
@@ -82,14 +82,14 @@ class Market:
     4  17.50    -2    acc 2004-08-16 16:00:00-04:00        1      0.3500
     5  17.35     4    acc 2004-08-17 09:30:00-04:00        0      0.6940
     6  17.34    -3    acc 2004-08-17 16:00:00-04:00        0      0.5202
-    7  17.25     5    acc 2004-08-18 09:30:00-04:00        1      0.8625
+    7   8.62     5    acc 2004-08-18 09:30:00-04:00        1      0.4310
 
 
     Accounting identities that should remain true:
 
     >>> div = m.broker.dividends()
 
-    >>> abs(m.broker.cash() - 9840.407) < 1e-6
+    >>> abs(m.broker.cash() - 9883.9885) < 1e-6
     True
     >>> cap_gain = ((cg['close_price'] - cg['open_price'])*cg['size']).sum()
     >>> cap_gain
@@ -105,7 +105,7 @@ class Market:
     4  17.50    -2    acc 2004-08-16 16:00:00-04:00        1
     5  17.35     4    acc 2004-08-17 09:30:00-04:00        0
     6  17.34    -3    acc 2004-08-17 16:00:00-04:00        0
-    7  17.25     5    acc 2004-08-18 09:30:00-04:00        1
+    7   8.62     5    acc 2004-08-18 09:30:00-04:00        1
 
     >>> div = m.broker.dividends()
     >>> div

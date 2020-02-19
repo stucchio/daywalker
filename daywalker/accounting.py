@@ -23,6 +23,9 @@ class CostBasis(namedtuple('CostBasis', ['price', 'size', 'symbol', 'date', 'com
     def cash_cost(self):
         return (self.price + self.commission_per_share) * self.size
 
+    def split(self, splitFactor):
+        return self._replace(price=self.price / splitFactor, size=self.size * splitFactor)
+
 
 class CapitalGainOrLoss(namedtuple('CapitalGainOrLoss', ['open_price', 'close_price', 'size', 'symbol', 'open_date', 'close_date', 'open_commission_per_share', 'close_commission_per_share', 'open_meta', 'close_meta']), HasDfDict):
     DICT_COLUMNS = ['open_price', 'close_price', 'size', 'symbol', 'open_date', 'close_date', 'open_commission_per_share', 'close_commission_per_share']
@@ -120,6 +123,10 @@ class AssetAccounting:
 
     def capital_gains(self):
         return self.__capital_gains_or_losses.get()
+
+    def execute_split(self, splitFactor):
+        for i in range(len(self.__owned)):
+            self.__owned[i] = self.__owned[i].split(splitFactor)
 
     def record_trade(self, trade):
         assert (trade.symbol == self.symbol), trade.symbol + ' != ' + self.symbol

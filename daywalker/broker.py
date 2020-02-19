@@ -31,7 +31,7 @@ class Broker:
     ... 'close': [17.5, 17.51, 17.5, 17.34, 17.11],
     ... 'volume': [2545100, 593000, 684700, 295900, 121300],
     ... 'divCash': [0.0, 0.0, 0.0, 0.25, 0.0],
-    ... 'splitFactor': [1.0, 1.0, 1.0, 1.0, 1.0]})
+    ... 'splitFactor': [1.0, 1.0, 2.0, 1.0, 1.0]})
     >>> ta = TradeableAsset('acc', prices)
 
     >>> b = Broker(10000, {'acc': TradeableAsset('acc', prices)})
@@ -59,6 +59,18 @@ class Broker:
     >>> b.cash() == (10000 - 17.54*10)
     True
 
+    Splits are handled with the `execute_splits` method:
+
+    >>> b.positions()
+       commission_per_share                      date  price  size symbol
+    0                   0.0 2004-08-16 09:30:00-04:00  17.54    10    acc
+    >>> b.execute_splits(pd.Timestamp('2004-08-16'))
+    >>> b.positions()
+       commission_per_share                      date  price  size symbol
+    0                   0.0 2004-08-16 09:30:00-04:00   8.77  20.0    acc
+
+    The stock has now split.
+
     We also handle dividends.
 
     >>> old_cash = b.cash()
@@ -66,12 +78,13 @@ class Broker:
     >>> div = b.dividends()
     >>> div[['amount', 'div_per_share', 'ex_date', 'shares', 'symbol']]
        amount  div_per_share    ex_date  shares symbol
-    0     2.5           0.25 2004-08-17      10    acc
+    0     5.0           0.25 2004-08-17    20.0    acc
 
     After issuing dividends, the amount of cash should increase by the appropriate amount.
 
     >>> b.cash() == (old_cash + div['amount'][0])
     True
+
     """
     def __init__(self, initial_cash, assets={}, margin=0, allow_short=False, default_timezone=pytz.timezone('America/New_York')):
         self.__cash = initial_cash
@@ -191,6 +204,17 @@ class Broker:
             del owned['commission_per_share']
             self.__cash += owned['amount'].sum()
             self.__dividends.append(owned)
+
+    def execute_splits(self, dt):
+        for symbol in self.__assets_owned():
+            try:
+                splitFactor = self.__assets[symbol].df['splitFactor'][dt]
+            except KeyError:
+                print("Skipping " + symbol + " -> " + str(dt))
+                continue  # This typically happens when the symbol either wasn't live at that time, or when it wasn't a trading day
+            if splitFactor == 1.0:
+                continue
+            self.__get_asset_accounting(symbol).execute_split(splitFactor)
 
     def historical_prices(self, symbol, dt, after_open):
         return self.__assets[symbol].get_censored(dt, after_open)
@@ -390,8 +414,9 @@ class BrokerInterface:
         self.__after_open = after_open
         self.__positions = self.__broker.positions()
         self.__positions_marked_to_market = self.__broker.positions_marked_to_market(self.__dt, self.__after_open)
-        if (after_open == False):  # Dividends take effect on the ex-dividend date
+        if (after_open == False):  # Dividends/splits take effect before market open
             self.__broker.execute_dividends(self.__dt)
+            self.__broker.execute_splits(self.__dt)
 
     def positions(self):
         return self.__positions

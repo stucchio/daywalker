@@ -1,6 +1,19 @@
 import pandas as pd
 
 
+def chunks(iterator, chunk_size):
+    """
+    Takes an iterator or collection and breaks it up into chunks of fixed size.
+    """
+    chunk = []
+    for x in iterator:
+        chunk.append(x)
+        if len(chunk) == chunk_size:
+            yield chunk
+            chunk = []
+    if len(chunk) > 0:
+        yield chunk
+
 class HasDfDict:
     META_FIELDS = []
 
